@@ -137,10 +137,14 @@ test("installed pre-push blocks aliases, deletion and protected refs without net
     `HEAD ${f.sha()} refs/heads/develop ${zero}`,
     `(delete) ${zero} refs/heads/main ${f.sha()}`,
   ]) {
-    const result = f.invoke(
-      ["hook", "run", "--to-stdin=/dev/stdin", "pre-push"],
-      { input: update + "\n" },
-    );
+    const inputPath = join(f.dir, "push-input.txt");
+    writeFileSync(inputPath, update + "\n");
+    const result = f.invoke([
+      "hook",
+      "run",
+      `--to-stdin=${inputPath}`,
+      "pre-push",
+    ]);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /Direct update/);
   }
