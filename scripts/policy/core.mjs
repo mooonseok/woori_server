@@ -160,6 +160,8 @@ export function verifyCommit(cwd, sha) {
     });
     const unpack = spawnSync("tar", ["-x", "-C", dir], { input: archive });
     if (unpack.status !== 0) throw new Error("Cannot extract outgoing commit");
+    // Registered hooks resolve their paths via Git, even in an archived snapshot.
+    run("git", ["init", "--quiet", "-b", "push-verification"], dir);
     if (
       JSON.parse(readFileSync(join(dir, "package.json"), "utf8")).name ===
       "woori_server"

@@ -174,7 +174,7 @@ test("outgoing validation uses archived commit not dirty worktree; failed qualit
   const fake = join(bin, "pnpm");
   writeFileSync(
     fake,
-    '#!/bin/sh\ntest "$(cat snapshot.txt)" = committed || exit 4\nexit 0\n',
+    '#!/bin/sh\ntest "$(cat snapshot.txt)" = committed || exit 4\ngit rev-parse --show-toplevel >/dev/null || exit 5\nexit 0\n',
   );
   chmodSync(fake, 0o755);
   process.env.PATH = `${bin}:${originalPath}`;
