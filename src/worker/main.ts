@@ -7,11 +7,12 @@ async function main() {
     console.log(JSON.stringify({ service: 'woori-worker', status: 'bootstrap', jobsReady: false }));
     await app.close(); return;
   }
-  console.log(JSON.stringify({ service: 'woori-worker', status: 'idle', jobsReady: false }));
   // No queue polling or object/DB access until adapters and job handlers exist.
   const keepAlive = setInterval(() => {}, 60_000);
   let closing = false;
   const stop = async () => { if (closing) return; closing = true; clearInterval(keepAlive); await app.close(); };
   process.once('SIGTERM', () => void stop()); process.once('SIGINT', () => void stop());
+  // Announce readiness only after signal handlers are installed.
+  console.log(JSON.stringify({ service: 'woori-worker', status: 'idle', jobsReady: false }));
 }
 void main().catch(() => { console.error('Worker bootstrap failed.'); process.exitCode = 1; });
