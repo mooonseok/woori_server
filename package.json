@@ -7,7 +7,7 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "dev": "node --env-file-if-exists=.env node_modules/@nestjs/cli/bin/nest.js start --watch",
+    "dev": "node --env-file-if-exists=.env node_modules/@nestjs/cli/bin/nest.js start --watch --no-shell",
     "build": "prisma generate && nest build",
     "typecheck": "prisma generate && tsc --noEmit",
     "start": "node --env-file-if-exists=.env dist/src/main.js",

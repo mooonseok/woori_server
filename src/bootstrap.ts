@@ -6,7 +6,7 @@ import { AppModule } from './app.module';
 import { runtimeConfig } from './common/configurations/runtime.config';
 export async function createApp() {
   const config = runtimeConfig();
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { logger: false });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { logger: false, abortOnError: false });
   app.useBodyParser('json', { limit: '128kb' });
   app.useBodyParser('urlencoded', { limit: '128kb', extended: false });
   app.disable('x-powered-by');
