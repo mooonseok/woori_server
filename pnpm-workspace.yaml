@@ -1,6 +1,4 @@
-packages:
-  - 'apps/*'
-  - 'packages/*'
-
 onlyBuiltDependencies:
-  - sharp
+  - "@nestjs/core"
+  - "@prisma/engines"
+  - prisma

@@ -1,0 +1,418 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["woori"]
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+
+  @@schema("woori")
+}
+
+enum GroupStatus {
+  ACTIVE
+  DELETING
+  DELETED
+
+  @@schema("woori")
+}
+
+enum MembershipStatus {
+  ACTIVE
+  PENDING
+  LEFT
+  REMOVED
+
+  @@schema("woori")
+}
+
+enum MemberRole {
+  OWNER
+  MEMBER
+
+  @@schema("woori")
+}
+
+enum PhotoStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+  DELETING
+  DELETED
+
+  @@schema("woori")
+}
+
+enum CommentKind {
+  GENERAL
+  PIN
+
+  @@schema("woori")
+}
+
+enum NotificationKind {
+  PHOTOS
+  COMMENT
+  PIN
+  REACTION
+  JOIN_REQUEST
+  JOIN_RESULT
+  MEMORY
+
+  @@schema("woori")
+}
+
+enum GroupNotificationMode {
+  DEFAULT
+  MINE
+  OFF
+
+  @@schema("woori")
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+
+  @@schema("woori")
+}
+
+model User {
+  id                     String                        @id @default(uuid()) @db.Uuid
+  username               String                        @unique @db.VarChar(64)
+  displayName            String                        @db.VarChar(80)
+  email                  String                        @unique @db.VarChar(254)
+  passwordHash           String                        @db.VarChar(512)
+  status                 UserStatus                    @default(ACTIVE)
+  verifiedAt             DateTime?                     @db.Timestamptz(6)
+  createdAt              DateTime                      @default(now()) @db.Timestamptz(6)
+  emailTokens            EmailToken[]
+  createdInvitations     Invitation[]
+  ownedGroups            Group[]
+  memberships            Membership[]
+  albums                 Album[]
+  photos                 Photo[]
+  comments               Comment[]
+  reactions              Reaction[]
+  sessions               Session[]
+  notifications          Notification[]
+  notificationPreference NotificationPreference?
+  groupPreferences       GroupNotificationPreference[]
+  installations          PushInstallation[]
+
+  @@map("users")
+  @@schema("woori")
+}
+
+model Session {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique @db.VarChar(128)
+  audience  String    @db.VarChar(16)
+  expiresAt DateTime  @db.Timestamptz(6)
+  revokedAt DateTime? @db.Timestamptz(6)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, expiresAt])
+  @@map("sessions")
+  @@schema("woori")
+}
+
+model Group {
+  id            String                        @id @default(uuid()) @db.Uuid
+  name          String                        @db.VarChar(100)
+  ownerId       String                        @db.Uuid
+  status        GroupStatus                   @default(ACTIVE)
+  quotaBytes    BigInt                        @default(21474836480)
+  usedBytes     BigInt                        @default(0)
+  createdAt     DateTime                      @default(now()) @db.Timestamptz(6)
+  owner         User                          @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  invitations   Invitation[]
+  memberships   Membership[]
+  albums        Album[]
+  photos        Photo[]
+  notifications Notification[]
+  preferences   GroupNotificationPreference[]
+
+  @@map("groups")
+  @@schema("woori")
+}
+
+model Membership {
+  groupId  String           @db.Uuid
+  userId   String           @db.Uuid
+  role     MemberRole       @default(MEMBER)
+  status   MembershipStatus @default(PENDING)
+  joinedAt DateTime?        @db.Timestamptz(6)
+  group    Group            @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  user     User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@id([groupId, userId])
+  @@index([userId, status])
+  @@map("memberships")
+  @@schema("woori")
+}
+
+model Album {
+  id        String    @id @default(uuid()) @db.Uuid
+  groupId   String    @db.Uuid
+  creatorId String    @db.Uuid
+  title     String    @db.VarChar(160)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+  group     Group     @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  creator   User      @relation(fields: [creatorId], references: [id], onDelete: Restrict)
+  photos    Photo[]
+
+  @@unique([id, groupId])
+  @@index([groupId, deletedAt, createdAt])
+  @@map("albums")
+  @@schema("woori")
+}
+
+model Photo {
+  id                String         @id @default(uuid()) @db.Uuid
+  groupId           String         @db.Uuid
+  albumId           String         @db.Uuid
+  uploaderId        String         @db.Uuid
+  status            PhotoStatus    @default(PENDING)
+  bytes             BigInt         @default(0)
+  width             Int?
+  height            Int?
+  capturedAt        DateTime?      @db.Timestamptz(6)
+  captureDateSource String?        @db.VarChar(24)
+  createdAt         DateTime       @default(now()) @db.Timestamptz(6)
+  deletedAt         DateTime?      @db.Timestamptz(6)
+  group             Group          @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  album             Album          @relation(fields: [albumId, groupId], references: [id, groupId], onDelete: Restrict)
+  uploader          User           @relation(fields: [uploaderId], references: [id], onDelete: Restrict)
+  variants          PhotoVariant[]
+  comments          Comment[]
+  reactions         Reaction[]
+
+  @@unique([id, groupId])
+  @@index([albumId, status, createdAt])
+  @@map("photos")
+  @@schema("woori")
+}
+
+model PhotoVariant {
+  id        String @id @default(uuid()) @db.Uuid
+  photoId   String @db.Uuid
+  kind      String @db.VarChar(16)
+  objectKey String @unique @db.VarChar(512)
+  mime      String @db.VarChar(80)
+  width     Int
+  height    Int
+  bytes     BigInt
+  photo     Photo  @relation(fields: [photoId], references: [id], onDelete: Restrict)
+
+  @@unique([photoId, kind])
+  @@map("photo_variants")
+  @@schema("woori")
+}
+
+model Comment {
+  id        String      @id @default(uuid()) @db.Uuid
+  groupId   String      @db.Uuid
+  photoId   String      @db.Uuid
+  authorId  String      @db.Uuid
+  body      String      @db.VarChar(2000)
+  kind      CommentKind @default(GENERAL)
+  x         Float?
+  y         Float?
+  parentId  String?     @db.Uuid
+  createdAt DateTime    @default(now()) @db.Timestamptz(6)
+  deletedAt DateTime?   @db.Timestamptz(6)
+  photo     Photo       @relation(fields: [photoId, groupId], references: [id, groupId], onDelete: Restrict)
+  author    User        @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  parent    Comment?    @relation("CommentReplies", fields: [parentId, photoId], references: [id, photoId], onDelete: Restrict, onUpdate: NoAction)
+  replies   Comment[]   @relation("CommentReplies")
+
+  @@unique([id, photoId])
+  @@index([photoId, createdAt])
+  @@map("comments")
+  @@schema("woori")
+}
+
+model Reaction {
+  photoId   String   @db.Uuid
+  userId    String   @db.Uuid
+  emoji     String   @db.VarChar(32)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  photo     Photo    @relation(fields: [photoId], references: [id], onDelete: Restrict)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@id([photoId, userId])
+  @@map("reactions")
+  @@schema("woori")
+}
+
+model NotificationPreference {
+  userId           String  @id @db.Uuid
+  enabled          Boolean @default(true)
+  photos           Boolean @default(true)
+  comments         Boolean @default(true)
+  reactions        Boolean @default(true)
+  join             Boolean @default(true)
+  memories         Boolean @default(false)
+  preview          Boolean @default(false)
+  quietEnabled     Boolean @default(false)
+  quietStartMinute Int     @default(1320)
+  quietEndMinute   Int     @default(480)
+  timeZone         String  @default("Asia/Seoul") @db.VarChar(64)
+  version          Int     @default(0)
+  user             User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@map("notification_preferences")
+  @@schema("woori")
+}
+
+model GroupNotificationPreference {
+  userId  String                @db.Uuid
+  groupId String                @db.Uuid
+  mode    GroupNotificationMode @default(DEFAULT)
+  user    User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  group   Group                 @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  @@id([userId, groupId])
+  @@map("group_notification_preferences")
+  @@schema("woori")
+}
+
+model Notification {
+  id                  String                 @id @default(uuid()) @db.Uuid
+  recipientId         String                 @db.Uuid
+  groupId             String                 @db.Uuid
+  kind                NotificationKind
+  targetId            String                 @db.Uuid
+  dedupeKey           String                 @db.VarChar(256)
+  readThroughSequence Int                    @default(0)
+  createdAt           DateTime               @default(now()) @db.Timestamptz(6)
+  recipient           User                   @relation(fields: [recipientId], references: [id], onDelete: Restrict)
+  group               Group                  @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  activities          NotificationActivity[]
+  deliveries          NotificationDelivery[]
+
+  @@unique([recipientId, dedupeKey])
+  @@index([recipientId, createdAt])
+  @@map("notifications")
+  @@schema("woori")
+}
+
+model NotificationActivity {
+  id             String       @id @default(uuid()) @db.Uuid
+  notificationId String       @db.Uuid
+  actorId        String       @db.Uuid
+  sequence       Int
+  eventKey       String       @db.VarChar(256)
+  createdAt      DateTime     @default(now()) @db.Timestamptz(6)
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Restrict)
+
+  @@unique([notificationId, eventKey])
+  @@unique([notificationId, sequence])
+  @@map("notification_activities")
+  @@schema("woori")
+}
+
+model PushInstallation {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  userId             String                 @db.Uuid
+  provider           String                 @db.VarChar(16)
+  endpointCiphertext String
+  endpointHash       String                 @unique @db.VarChar(128)
+  enabled            Boolean                @default(true)
+  revokedAt          DateTime?              @db.Timestamptz(6)
+  user               User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  deliveries         NotificationDelivery[]
+
+  @@map("push_installations")
+  @@schema("woori")
+}
+
+model NotificationDelivery {
+  id             String           @id @default(uuid()) @db.Uuid
+  notificationId String           @db.Uuid
+  installationId String           @db.Uuid
+  deliveryKey    String           @unique @db.VarChar(256)
+  status         JobStatus        @default(PENDING)
+  attempts       Int              @default(0)
+  nextAttemptAt  DateTime         @default(now()) @db.Timestamptz(6)
+  leaseUntil     DateTime?        @db.Timestamptz(6)
+  notification   Notification     @relation(fields: [notificationId], references: [id], onDelete: Restrict)
+  installation   PushInstallation @relation(fields: [installationId], references: [id], onDelete: Restrict)
+
+  @@index([status, nextAttemptAt])
+  @@map("notification_deliveries")
+  @@schema("woori")
+}
+
+model OutboxEvent {
+  id            String    @id @default(uuid()) @db.Uuid
+  eventKey      String    @unique @db.VarChar(256)
+  type          String    @db.VarChar(80)
+  aggregateId   String    @db.Uuid
+  payload       Json
+  status        JobStatus @default(PENDING)
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now()) @db.Timestamptz(6)
+  leaseUntil    DateTime? @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([status, nextAttemptAt])
+  @@map("outbox_events")
+  @@schema("woori")
+}
+
+model EmailToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  tokenHash  String    @unique @db.VarChar(128)
+  purpose    String    @db.VarChar(32)
+  expiresAt  DateTime  @db.Timestamptz(6)
+  consumedAt DateTime? @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, purpose, expiresAt])
+  @@map("email_tokens")
+  @@schema("woori")
+}
+
+model RateLimitBucket {
+  id          String   @id @db.VarChar(128)
+  windowStart DateTime @db.Timestamptz(6)
+  attempts    Int      @default(0)
+
+  @@index([windowStart])
+  @@map("rate_limit_buckets")
+  @@schema("woori")
+}
+
+model Invitation {
+  id          String    @id @default(uuid()) @db.Uuid
+  groupId     String    @db.Uuid
+  createdById String    @db.Uuid
+  tokenHash   String    @unique @db.VarChar(128)
+  codeHash    String    @unique @db.VarChar(128)
+  expiresAt   DateTime  @db.Timestamptz(6)
+  revokedAt   DateTime? @db.Timestamptz(6)
+  maxUses     Int
+  useCount    Int       @default(0)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+  group       Group     @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  creator     User      @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([groupId, createdAt])
+  @@map("invitations")
+  @@schema("woori")
+}

@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+repo_dir=$(git rev-parse --show-toplevel)
+exec sh "$repo_dir/scripts/policy/run-node.sh" "$repo_dir/scripts/policy/gate.mjs" commit-msg "$@"

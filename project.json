@@ -1,24 +1,59 @@
 {
   "name": "woori_server",
   "product": "우리",
-  "status": "bootstrap-only",
+  "status": "local-postgresql-auth-groups-invitations-implemented",
   "plans": "/Users/parkmoonseok/.Codex/projects/woori_server/plans",
   "sharedPlan": "/Users/parkmoonseok/.Codex/projects/woori/plans/00-product-plan.md",
   "implemented": [
-    "buildable scaffold"
+    "NestJS src/common + src/domain + src/admin + independent worker structure",
+    "local PostgreSQL 16 migrations and restricted woori_api runtime role",
+    "scrypt password authentication, hashed revocable web sessions and Origin protection",
+    "one-time account-bound email verification; private development mail files and Resend adapter",
+    "membership-scoped groups and album reads; atomic owner membership on group creation",
+    "hashed invitation code/link, owner controls and serializable bounded/idempotent joining",
+    "database-backed request limiting and explicit verified proxy-hop configuration",
+    "pure notification eligibility policy; isolated PostgreSQL integration tests"
   ],
   "notImplemented": [
-    "authentication",
-    "authorization",
-    "database connection and migrations",
-    "photo upload and media processing",
-    "admin operations",
-    "cloud deployment"
+    "production Supabase/Railway/R2 provisioning and deployment",
+    "actual external email delivery verification, mail outbox/retries and account recovery",
+    "native refresh tokens, admin authentication/MFA and operations",
+    "album/photo writes, R2 upload/media adapters and image processing",
+    "persisted comments/reactions/notifications and push providers",
+    "worker queue handlers, production backup and restore validation"
   ],
   "deployment": {
     "api": "Railway paid; Serverless off",
     "worker": "Railway paid; separate service; Serverless off",
     "database": "Supabase Pro PostgreSQL",
     "objects": "Cloudflare R2 Standard private buckets"
-  }
+  },
+  "entryPoints": {
+    "api": "dist/src/main.js",
+    "worker": "dist/src/worker/main.js"
+  },
+  "database": {
+    "schema": "prisma/schema.prisma",
+    "migrations": "prisma/migrations",
+    "applied": true,
+    "appliedEnvironment": "isolated local PostgreSQL 16 at 127.0.0.1:55439/woori_dev only",
+    "remoteApplied": false,
+    "runtimeRole": "woori_api (NOSUPERUSER, NOBYPASSRLS; separate migration credentials)",
+    "authorization": "RLS allows server runtime role across granted rows; per-user group isolation is enforced in API membership queries",
+    "runtimeGrants": "prisma/runtime-grants.sql"
+  },
+  "runtimeConfiguration": {
+    "PORT": "default 3001",
+    "WEB_ORIGIN": "local http://localhost:3210; production exact HTTPS web origin",
+    "CORS_ALLOWED_ORIGINS": "comma-separated exact origins; required for browser mutations",
+    "TRUST_PROXY_HOPS": "0 locally; 1 only for a verified single trusted proxy topology",
+    "DATABASE_URL": "runtime-only woori_api PostgreSQL connection",
+    "MIGRATION_DATABASE_URL": "separate migration connection; explicit migrate/prepare only",
+    "MAIL_MODE": "file locally (no external email); resend after provider setup",
+    "DEV_MAIL_DIR": "absolute private directory outside repositories, development only",
+    "RESEND_API_KEY": "server secret for Resend mode; never NEXT_PUBLIC",
+    "MAIL_FROM": "verified sender for Resend mode",
+    "envLoading": "dev/start/migrate scripts load gitignored .env; DB compose loads .env.local-db"
+  },
+  "localSetupPlan": "/Users/parkmoonseok/.Codex/projects/woori/plans/05-local-auth-setup.md"
 }

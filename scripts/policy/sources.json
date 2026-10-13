@@ -1,0 +1,26 @@
+[
+  {
+    "source": "harness-engineer",
+    "version": "local reviewed 2026-10-13",
+    "adaptation": "implementation/debug/contract workflow; no stack directory conventions"
+  },
+  {
+    "source": "claude-cowork engineering",
+    "version": "1.1.0",
+    "skills": [
+      "testing-strategy",
+      "code-review"
+    ],
+    "adaptation": "risk-based tests and evidence-based review; original wording rewritten"
+  },
+  {
+    "source": "claude-cowork design accessibility-review",
+    "version": "1.2.0",
+    "adaptation": "client only; separate product target size recommendation from AA requirements"
+  },
+  {
+    "source": "woori user requirements",
+    "version": "2026-10-13",
+    "adaptation": "commit/deploy/auth/photo interaction procedures"
+  }
+]

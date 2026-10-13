@@ -1,0 +1,19 @@
+name: woori-local
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: woori-local-postgres
+    environment:
+      POSTGRES_DB: woori_dev
+      POSTGRES_PASSWORD: ${WOORI_LOCAL_POSTGRES_PASSWORD:?Set .env.local-db}
+    ports:
+      - "127.0.0.1:55439:5432"
+    volumes:
+      - woori-local-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d woori_dev"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+volumes:
+  woori-local-pg:
