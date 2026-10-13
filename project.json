@@ -1,0 +1,24 @@
+{
+  "name": "woori_server",
+  "product": "우리",
+  "status": "bootstrap-only",
+  "plans": "/Users/parkmoonseok/.Codex/projects/woori_server/plans",
+  "sharedPlan": "/Users/parkmoonseok/.Codex/projects/woori/plans/00-product-plan.md",
+  "implemented": [
+    "buildable scaffold"
+  ],
+  "notImplemented": [
+    "authentication",
+    "authorization",
+    "database connection and migrations",
+    "photo upload and media processing",
+    "admin operations",
+    "cloud deployment"
+  ],
+  "deployment": {
+    "api": "Railway paid; Serverless off",
+    "worker": "Railway paid; separate service; Serverless off",
+    "database": "Supabase Pro PostgreSQL",
+    "objects": "Cloudflare R2 Standard private buckets"
+  }
+}

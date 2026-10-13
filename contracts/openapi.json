@@ -1,0 +1,77 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "우리 API Bootstrap",
+    "version": "0.0.0",
+    "description": "Only process liveness and unavailable readiness are implemented. Domain endpoints are planned separately."
+  },
+  "x-domain-contract": "/Users/parkmoonseok/.Codex/projects/woori/plans/03-api-contract.md",
+  "paths": {
+    "/healthz": {
+      "get": {
+        "operationId": "getLiveness",
+        "responses": {
+          "200": {
+            "description": "API process alive; no dependency or business readiness implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "service",
+                    "status",
+                    "implementation",
+                    "featuresReady"
+                  ],
+                  "properties": {
+                    "service": {
+                      "const": "woori-api"
+                    },
+                    "status": {
+                      "const": "alive"
+                    },
+                    "implementation": {
+                      "const": "bootstrap"
+                    },
+                    "featuresReady": {
+                      "const": false
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "getReadiness",
+        "responses": {
+          "503": {
+            "description": "Bootstrap has no connected production dependencies.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "code"
+                  ],
+                  "properties": {
+                    "status": {
+                      "const": "not_ready"
+                    },
+                    "code": {
+                      "const": "BOOTSTRAP_ONLY"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

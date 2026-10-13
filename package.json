@@ -1,0 +1,17 @@
+{
+  "name": "woori_server",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.27.0",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @woori/api dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "start:api": "pnpm --filter @woori/api start",
+    "start:worker": "pnpm --filter @woori/worker start",
+    "check:worker": "pnpm --filter @woori/worker check"
+  }
+}
