@@ -1,17 +1,49 @@
 {
   "name": "woori_server",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@10.27.0",
   "engines": {
     "node": ">=24 <25"
   },
   "scripts": {
-    "dev": "pnpm --filter @woori/api dev",
-    "build": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck",
-    "start:api": "pnpm --filter @woori/api start",
-    "start:worker": "pnpm --filter @woori/worker start",
-    "check:worker": "pnpm --filter @woori/worker check"
+    "dev": "node --env-file-if-exists=.env node_modules/@nestjs/cli/bin/nest.js start --watch",
+    "build": "prisma generate && nest build",
+    "typecheck": "prisma generate && tsc --noEmit",
+    "start": "node --env-file-if-exists=.env dist/src/main.js",
+    "start:api": "node --env-file-if-exists=.env dist/src/main.js",
+    "start:worker": "node --env-file-if-exists=.env dist/src/worker/main.js",
+    "check:worker": "node dist/src/worker/main.js --check",
+    "test": "pnpm build && node --test dist/test/*.test.js",
+    "prisma:validate": "prisma validate",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate:deploy": "node --env-file-if-exists=.env node_modules/prisma/build/index.js migrate deploy",
+    "dev:db": "docker compose --env-file .env.local-db -f compose.local.yml up -d --wait",
+    "dev:db:stop": "docker compose --env-file .env.local-db -f compose.local.yml stop",
+    "dev:db:prepare": "node scripts/apply-local-database.mjs",
+    "test:integration": "pnpm build && node scripts/run-integration.mjs"
+  },
+  "dependencies": {
+    "@nestjs/common": "11.1.9",
+    "@nestjs/core": "11.1.9",
+    "@nestjs/platform-express": "11.1.9",
+    "@prisma/adapter-pg": "7.0.0",
+    "@prisma/client": "7.0.0",
+    "class-transformer": "0.5.1",
+    "class-validator": "0.14.2",
+    "pg": "8.16.3",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "11.0.12",
+    "@nestjs/testing": "11.1.9",
+    "@types/express": "5.0.3",
+    "@types/node": "24.19.2",
+    "@types/pg": "8.15.6",
+    "@types/supertest": "6.0.3",
+    "prisma": "7.0.0",
+    "supertest": "7.1.4",
+    "typescript": "5.9.3"
   }
 }
