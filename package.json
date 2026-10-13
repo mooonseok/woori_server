@@ -21,7 +21,12 @@
     "dev:db": "docker compose --env-file .env.local-db -f compose.local.yml up -d --wait",
     "dev:db:stop": "docker compose --env-file .env.local-db -f compose.local.yml stop",
     "dev:db:prepare": "node scripts/apply-local-database.mjs",
-    "test:integration": "pnpm build && node scripts/run-integration.mjs"
+    "test:integration": "pnpm build && node scripts/run-integration.mjs",
+    "policy:install": "node scripts/policy/install.mjs",
+    "policy:check": "node scripts/policy/check.mjs",
+    "policy:test": "node --test scripts/policy/*.test.mjs",
+    "policy:quality": "node scripts/policy/gate.mjs quality",
+    "policy:ci": "node scripts/policy/gate.mjs ci"
   },
   "dependencies": {
     "@nestjs/common": "11.1.9",

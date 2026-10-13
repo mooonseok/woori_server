@@ -1,0 +1,41 @@
+name: Quality
+on:
+  pull_request:
+  push:
+    branches: [develop, main]
+permissions:
+  contents: read
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  quality:
+    name: Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm policy:ci
+        env:
+          POLICY_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      - name: Prepare isolated CI database
+        run: |
+          node scripts/policy/prepare-ci-env.mjs
+          pnpm dev:db
+          pnpm dev:db:prepare
+      - run: pnpm policy:quality
+      - name: Remove ephemeral CI database
+        if: always()
+        run: docker compose --env-file .env.local-db -f compose.local.yml down --volumes

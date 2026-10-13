@@ -1,0 +1,58 @@
+# 우리 서버 작업 지침
+
+이 파일은 Codex와 Claude가 공유하는 저장소 지침의 정본이다.
+
+## 프로젝트
+- NestJS 구조는 src/common, src/domain, src/admin이며 워커는 src/worker에 분리한다.
+- controller는 요청·응답, service는 정책, repository는 데이터 접근을 담당한다.
+- PostgreSQL 모델과 마이그레이션은 prisma, 실행 API 계약은 contracts/openapi.json이 정본이다.
+- 실제 API 접두사는 /v1이다. 공개 계약 변경 시 클라이언트 영향과 명세를 함께 확인한다.
+- 인증된 계정이라는 사실만으로 그룹 접근을 허용하지 않는다. 현재 활성 멤버십을 검사한다.
+- 그룹장 전용 작업과 일반 멤버 작업을 구분하고 일반 회원 세션으로 관리자 API를 허용하지 않는다.
+- 비밀번호·세션·이메일 확인·초대의 비밀값은 해시로 저장하고 원문을 로그에 남기지 않는다.
+- 서버 DB 역할과 마이그레이션 역할을 분리한다. 서버 역할용 RLS는 사용자별 격리를 대신하지 않는다.
+- DB 변경은 대상 환경·데이터 영향·복구 방법을 확인한 뒤 명시적으로 적용한다.
+- 적용한 마이그레이션은 수정하지 않고 후속 마이그레이션을 추가한다.
+- 초대 횟수·멤버십처럼 동시에 변경되는 데이터는 트랜잭션과 경쟁 조건을 검증한다.
+- 배포 목표는 Railway 유료 API/워커, Supabase Pro PostgreSQL, 비공개 R2다.
+  로컬 검증을 운영 배포·외부 메일 발송·스토리지 연결 완료로 보고하지 않는다.
+
+## 실행과 검증
+- nvm use 후 pnpm을 사용한다. 로컬 API: pnpm dev, localhost:3001.
+- 로컬 DB: pnpm dev:db. 이미 마련된 비공개 환경 파일을 사용한다.
+- pnpm dev:db:prepare는 로컬 DB에 마이그레이션·역할 권한을 적용하는 변경 명령이다.
+- 정적·단위 검증: pnpm prisma:validate, pnpm typecheck, pnpm test.
+- 인증·권한·DB 변경 검증: pnpm test:integration.
+  이 명령은 로컬 개발 DB와 별개인 임시 테스트 DB를 생성·정리한다.
+- 기존 테스트 DB 주소 제한을 제거하거나 운영 DB에 테스트·seed·reset을 실행하지 않는다.
+- 로컬 MAIL_MODE=file은 개발 메일 파일만 생성한다. 실메일 발송이 아니다.
+- 현재 구현 범위와 외부 기획 위치는 project.json에서 확인한다.
+
+## 공통 핵심 기준
+
+- 한국어로 실제 코드·검증 결과를 근거로 보고하고 사용자 변경을 보존한다.
+- Node는 .nvmrc, pnpm은 packageManager를 따른다. 커밋·push·배포는 요청 범위에 한정한다.
+- main/develop 직접 커밋·push, 훅 우회, 비밀값 출력·커밋을 하지 않는다.
+- 계획·검토 문서는 대화 또는 ~/.Codex/projects/<project>/plans/에 둔다.
+- 지침·스킬·실행 검사 코드는 저장소에 둔다. 기존 폴더 구조/컨벤션을 유지한다.
+
+## 필요한 규칙과 절차 읽기
+
+- 편집 전 .claude/rules/repository-safety.md와 verification.md를 읽는다.
+- API/DTO/소비자 변경: .claude/rules/api-contract.md를 읽는다.
+- 인증/그룹/DB 변경: .claude/rules/authorization.md와 database-safety.md를 읽는다.
+
+- .claude/skills/<이름>/SKILL.md가 절차 정본이며 .agents/skills에서 같은 파일을 연결한다.
+- 기능 구현: woori-implement, 진단: woori-debug, 검증: woori-verify, 리뷰: woori-review.
+- API 변경: woori-api-change. 커밋/배포 요청 시 woori-commit/woori-deploy를 명시적으로 사용한다.
+- 인증/권한/트랜잭션 구현: woori-server-auth-data.
+
+## 위임 및 집행
+
+- 대량 탐색은 code-explorer, 긴 검사 로그는 verification-runner, 보안 검토는 security-reviewer에 위임 가능하다.
+- .claude/agents와 .codex/agents는 동일 역할을 각 도구 형식으로 정의한다. 모델은 상속한다.
+- 위임 결과는 결론·파일/행 근거·검사 결과·실패 이유·미확인 사항으로 요약한다.
+- pnpm policy:install은 저장소 로컬 Git 훅을 설치한다. 기존 다른 hooksPath는 덮어쓰지 않는다.
+- pnpm policy:check / policy:test로 연결과 실제 차단을 검증한다. 상세 실행 한계는 아래 절차를 읽는다.
+- Codex/Claude 훅 사용·검증·해제: .claude/skills/woori-verify/references/policy-operations.md.
+- 로컬 훅은 우회 불가능한 보안 경계가 아니다. CI 설정 파일만으로 원격 필수 검사가 활성화되지는 않는다.
