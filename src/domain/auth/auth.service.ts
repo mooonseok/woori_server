@@ -86,7 +86,11 @@ export class AuthService {
         message: '아이디와 비밀번호를 확인해 주세요.',
       });
     const token = createToken();
-    await this.repository.createSession(user.id, hashToken(token));
+    await this.repository.createSession(
+      user.id,
+      hashToken(token),
+      user.passwordHash
+    );
     await this.rotateCookie(request, response, token);
     return { user: publicUser(user) };
   }

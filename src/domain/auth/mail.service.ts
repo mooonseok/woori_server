@@ -6,6 +6,31 @@ import { developmentMailDirectory } from '../../common/configurations/developmen
 @Injectable()
 export class MailService {
   async sendVerification(email: string, token: string): Promise<void> {
+    const url = this.link('/verify-email', token);
+    await this.send(
+      email,
+      '[우리] 이메일 주소를 확인해 주세요',
+      `아래 링크를 열어 이메일을 확인해 주세요. 링크는 30분 동안 한 번만 사용할 수 있어요.\n\n${url}\n\n가입한 적이 없다면 이 메일을 무시해 주세요.`
+    );
+  }
+  async sendUsername(email: string, username: string) {
+    await this.send(
+      email,
+      '[우리] 아이디를 안내해 드려요',
+      `우리 아이디는 ${username} 입니다.\n\n요청한 적이 없다면 이 메일을 무시해 주세요.`,
+      2000
+    );
+  }
+  async sendPasswordReset(email: string, token: string) {
+    const url = this.link('/reset-password', token);
+    await this.send(
+      email,
+      '[우리] 비밀번호를 다시 설정해 주세요',
+      `아래 링크에서 새 비밀번호를 정해 주세요. 링크는 30분 동안 한 번만 사용할 수 있어요. 새 링크를 요청하면 이전 링크는 사용할 수 없어요.\n\n${url}\n\n요청한 적이 없다면 이 메일을 무시해 주세요. 링크를 여는 것만으로 비밀번호가 바뀌지는 않아요.`,
+      2000
+    );
+  }
+  private link(path: string, token: string) {
     const origin = process.env.WEB_ORIGIN;
     if (!origin)
       throw new ServiceUnavailableException({ code: 'MAIL_NOT_CONFIGURED' });
@@ -14,13 +39,18 @@ export class MailService {
       base.origin !== origin ||
       !['http:', 'https:'].includes(base.protocol) ||
       (process.env.NODE_ENV === 'production' && base.protocol !== 'https:')
-    ) {
+    )
       throw new ServiceUnavailableException({ code: 'MAIL_NOT_CONFIGURED' });
-    }
-    const url = new URL('/verify-email', origin);
+    const url = new URL(path, origin);
     url.searchParams.set('token', token);
-    const subject = '[우리] 이메일 주소를 확인해 주세요';
-    const text = `아래 링크를 열어 이메일을 확인해 주세요. 링크는 30분 동안 한 번만 사용할 수 있어요.\n\n${url.toString()}\n\n가입한 적이 없다면 이 메일을 무시해 주세요.`;
+    return url.toString();
+  }
+  private async send(
+    email: string,
+    subject: string,
+    text: string,
+    timeout = 10000
+  ): Promise<void> {
     if (
       process.env.MAIL_MODE === 'file' &&
       process.env.NODE_ENV !== 'production'
@@ -45,7 +75,7 @@ export class MailService {
       throw new ServiceUnavailableException({ code: 'MAIL_NOT_CONFIGURED' });
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(timeout),
       headers: {
         Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
         'Content-Type': 'application/json',

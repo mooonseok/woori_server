@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Prisma, User } from '@prisma/client';
 import { PrismaService } from '../../common/modules/prisma/prisma.service';
 import { SESSION_TTL_MS } from './auth-token';
@@ -22,14 +26,33 @@ export class AuthRepository {
       return user;
     });
   }
-  async createSession(userId: string, tokenHash: string) {
-    return this.prisma.client.session.create({
-      data: {
-        userId,
-        tokenHash,
-        audience: 'web',
-        expiresAt: new Date(Date.now() + SESSION_TTL_MS),
-      },
+  async createSession(
+    userId: string,
+    tokenHash: string,
+    expectedPasswordHash: string
+  ) {
+    return this.prisma.client.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM woori.users WHERE id=${userId}::uuid FOR UPDATE`;
+      const user = await tx.user.findFirst({
+        where: {
+          id: userId,
+          passwordHash: expectedPasswordHash,
+          status: 'ACTIVE',
+        },
+      });
+      if (!user)
+        throw new UnauthorizedException({
+          code: 'INVALID_CREDENTIALS',
+          message: '아이디와 비밀번호를 확인해 주세요.',
+        });
+      return tx.session.create({
+        data: {
+          userId,
+          tokenHash,
+          audience: 'web',
+          expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+        },
+      });
     });
   }
   async findSession(tokenHash: string) {

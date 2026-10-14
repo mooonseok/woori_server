@@ -6,10 +6,21 @@
     {
       "id": "W01",
       "title": "계정 복구·이름 수정",
-      "status": "pending",
-      "evidence": [],
-      "implementationRefs": [],
-      "peerEvidence": []
+      "status": "done",
+      "evidence": [
+        "2026-10-15: server policy:quality passed (49 unit, 44 isolated DB integration, 18 policy). Client policy:quality passed; final changes also passed lint, typecheck, 63 tests, boundaries and isolated web/admin build.",
+        "Actual Resend username/password-reset mails received in Gmail; actual reset link opened, token removed from URL, profile name persisted after reload.",
+        "User completed browser reset and new-password login. Local DB independently confirmed consumed reset token, two revoked old sessions and one new active session; original session /me and old-password login both returned 401.",
+        "Fixture remains email-unverified by design: password reset does not verify email. Local temporary recovery_check_20261015 account retained for optional email-verification follow-up; no existing accounts changed."
+      ],
+      "implementationRefs": [
+        "feature/account-recovery; implementation recorded in this W01 commit",
+        "project.json",
+        "src/domain/auth/recovery.repository.ts"
+      ],
+      "peerEvidence": [
+        "Client and server contracts aligned with server contracts/openapi.json 0.7.0; real browser requests verified against local API and PostgreSQL."
+      ]
     },
     {
       "id": "W02",
@@ -68,7 +79,9 @@
       "peerEvidence": []
     }
   ],
-  "pendingDecisions": ["각 W 시작 전 DESIGN.md의 해당 결정사항 확인"],
+  "pendingDecisions": [
+    "W02-W08: review corresponding DESIGN.md decisions before implementation."
+  ],
   "durableDecisionsMoved": false,
   "permanentRefs": []
 }
