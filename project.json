@@ -1,7 +1,7 @@
 {
   "name": "woori_server",
   "product": "우리",
-  "status": "album-photo-management-with-durable-private-media-cleanup",
+  "status": "photo-comments-pins-and-emoji-reactions",
   "plans": "/Users/parkmoonseok/.Codex/projects/woori_server/plans",
   "sharedPlan": "/Users/parkmoonseok/.Codex/projects/woori/plans/00-product-plan.md",
   "implemented": [
@@ -19,13 +19,16 @@
     "actual R2 upload/variant reads, original checksums, browser CORS and browser upload flow verified with isolated local PostgreSQL",
     "owner-only album title update/deletion and active owner/uploader photo deletion",
     "transactional tombstones and quota release, upload completion/deletion fencing, permission summaries",
-    "durable media cleanup queue with expiring worker leases, verified private object deletion and retry"
+    "durable media cleanup queue with expiring worker leases, verified private object deletion and retry",
+    "persisted general/pin comments with bounded cursor pagination and author/owner permission summaries",
+    "one emoji reaction per user/photo with atomic replacement/removal and bounded allowlist",
+    "transactional active-membership and READY-photo authorization against deletion and revocation races"
   ],
   "notImplemented": [
     "production Supabase/Railway/R2 provisioning and deployment",
     "actual external email delivery verification, mail outbox/retries and account recovery",
     "native refresh tokens, admin authentication/MFA and operations",
-    "persisted comments/reactions/notifications and push providers",
+    "persisted notifications and push providers",
     "automated orphan reconciliation",
     "production backup and restore validation",
     "background image processing queue (current upload completion is synchronous)"

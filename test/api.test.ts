@@ -29,7 +29,7 @@ test('health contract, private routes, fabricated credentials and CORS', async (
     for (const path of [
       '/v1/groups',
       '/v1/groups/not-a-uuid/albums',
-      '/v1/photos/p/content',
+      '/v1/photos/p/comments',
       '/v1/comments',
       '/v1/notifications',
       '/v1/admin',
@@ -46,7 +46,7 @@ test('health contract, private routes, fabricated credentials and CORS', async (
       assert.equal(res.headers['cache-control'], 'no-store');
     }
     await api
-      .head('/v1/photos/p/content')
+      .head('/v1/photos/p/comments')
       .set('Range', 'bytes=0-10')
       .expect(401);
     await api.post('/v1/uploads').send({ groupId: 'g' }).expect(403);

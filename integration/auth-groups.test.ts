@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { BadRequestException } from '@nestjs/common';
 import { Readable } from 'node:stream';
 import { rateLimitKey } from '../src/domain/auth/auth-rate-limit.service';
@@ -1030,6 +1030,512 @@ test('real PostgreSQL: authentication, private groups and single-use invitation 
             .expect(429);
           assert.equal(blocked.body.code, 'TOO_MANY_REQUESTS');
         }
+      }
+    );
+    await t.test(
+      'photo interactions persist across accounts and enforce author, membership and deletion boundaries',
+      async (interactions) => {
+        // Only disposable PostgreSQL fixtures are inserted directly. Every
+        // interaction, authorization check and deletion uses the real HTTP API.
+        const group = (
+          await mutation(owner.agent.post('/v1/groups'))
+            .send({ name: '댓글과 반응 검증' })
+            .expect(201)
+        ).body.group.id as string;
+        const invitation = (
+          await mutation(owner.agent.post(`/v1/groups/${group}/invitations`))
+            .send({ maxUses: 1 })
+            .expect(201)
+        ).body;
+        await mutation(winner.agent.post('/v1/invitations/join'))
+          .send({ code: invitation.code })
+          .expect(200);
+        const albums = `/v1/groups/${group}/albums`;
+        const album = (
+          await mutation(owner.agent.post(albums))
+            .send({ title: '이야기를 남길 사진' })
+            .expect(201)
+        ).body.album.id as string;
+        const makePhoto = async (status = 'READY') => {
+          const id = randomUUID();
+          await admin.query(
+            'INSERT INTO woori.photos (id,"groupId","albumId","uploaderId",status,width,height,bytes) VALUES ($1,$2,$3,$4,$5,1200,800,1)',
+            [id, group, album, owner.id, status]
+          );
+          if (status === 'READY')
+            await admin.query(
+              'UPDATE woori.groups SET "usedBytes"="usedBytes"+1 WHERE id=$1',
+              [group]
+            );
+          return id;
+        };
+        const photo = await makePhoto();
+        const otherPhoto = await makePhoto();
+        const pending = await makePhoto('PENDING');
+        const comments = `/v1/photos/${photo}/comments`;
+        const reactions = `/v1/photos/${photo}/reactions`;
+        let generalId = '';
+        let pinId = '';
+        await interactions.test(
+          'runtime role has only the table privileges required for interaction mutations',
+          async () => {
+            const runtime = new Pool({
+              connectionString: requireIsolatedDatabase('DATABASE_URL'),
+              max: 1,
+            });
+            try {
+              const permissions = await runtime.query(
+                `SELECT
+                  (has_table_privilege(current_user, 'woori.comments', 'SELECT') AND has_table_privilege(current_user, 'woori.comments', 'INSERT') AND has_table_privilege(current_user, 'woori.comments', 'UPDATE')) AS comments_write,
+                  has_table_privilege(current_user, 'woori.comments', 'DELETE') AS comments_delete,
+                  (has_table_privilege(current_user, 'woori.reactions', 'SELECT') AND has_table_privilege(current_user, 'woori.reactions', 'INSERT') AND has_table_privilege(current_user, 'woori.reactions', 'UPDATE') AND has_table_privilege(current_user, 'woori.reactions', 'DELETE')) AS reactions_write,
+                  has_table_privilege(current_user, 'woori.comments', 'TRUNCATE') AS comments_truncate,
+                  has_table_privilege(current_user, 'woori.reactions', 'TRUNCATE') AS reactions_truncate`
+              );
+              assert.deepEqual(permissions.rows[0], {
+                comments_write: true,
+                comments_delete: false,
+                reactions_write: true,
+                comments_truncate: false,
+                reactions_truncate: false,
+              });
+            } finally {
+              await runtime.end();
+            }
+          }
+        );
+        await interactions.test(
+          'two accounts can create, reload, paginate and edit general and normalized pin comments',
+          async () => {
+            const initial = await owner.agent.get(comments).expect(200);
+            assert.deepEqual(initial.body, {
+              comments: [],
+              nextCursor: null,
+              total: 0,
+            });
+            assert.equal(initial.headers['cache-control'], 'no-store');
+            const general = (
+              await mutation(owner.agent.post(comments))
+                .send({ body: '  함께 남기는 추억  ' })
+                .expect(201)
+            ).body.comment;
+            generalId = general.id;
+            assert.equal(general.body, '함께 남기는 추억');
+            assert.equal(general.kind, 'GENERAL');
+            assert.equal(general.x, null);
+            assert.equal(general.y, null);
+            assert.deepEqual(general.author, {
+              id: owner.id,
+              displayName: 'owner',
+            });
+            assert.equal(general.canEdit, true);
+            assert.equal(general.canDelete, true);
+            assert.ok(Number.isFinite(Date.parse(general.createdAt)));
+            const pin = (
+              await mutation(winner.agent.post(comments))
+                .send({ body: '이 자리가 기억나!', kind: 'PIN', x: 0, y: 1 })
+                .expect(201)
+            ).body.comment;
+            pinId = pin.id;
+            assert.equal(pin.kind, 'PIN');
+            assert.equal(pin.x, 0);
+            assert.equal(pin.y, 1);
+            const reloaded = await winner.agent.get(comments).expect(200);
+            assert.equal(reloaded.body.total, 2);
+            const fromOtherAccount = reloaded.body.comments.find(
+              (comment: { id: string }) => comment.id === generalId
+            );
+            assert.equal(fromOtherAccount.body, general.body);
+            assert.equal(fromOtherAccount.canEdit, false);
+            assert.equal(fromOtherAccount.canDelete, false);
+            const first = await owner.agent
+              .get(`${comments}?limit=1`)
+              .expect(200);
+            assert.equal(first.body.comments.length, 1);
+            assert.equal(first.body.total, 2);
+            assert.equal(first.body.comments[0].id, pinId);
+            assert.equal(first.body.comments[0].canEdit, false);
+            assert.equal(first.body.comments[0].canDelete, true);
+            assert.ok(first.body.nextCursor);
+            const second = await owner.agent
+              .get(`${comments}?limit=1&cursor=${first.body.nextCursor}`)
+              .expect(200);
+            assert.equal(second.body.comments[0].id, generalId);
+            assert.equal(second.body.nextCursor, null);
+            const edited = await mutation(
+              winner.agent.patch(`${comments}/${pinId}`)
+            )
+              .send({ body: '  다시 봐도 좋은 자리  ' })
+              .expect(200);
+            assert.equal(edited.body.comment.body, '다시 봐도 좋은 자리');
+            assert.equal(edited.body.comment.x, 0);
+            assert.equal(edited.body.comment.y, 1);
+            const saved = await admin.query(
+              'SELECT body,kind,x,y FROM woori.comments WHERE id=$1',
+              [pinId]
+            );
+            assert.deepEqual(saved.rows[0], {
+              body: '다시 봐도 좋은 자리',
+              kind: 'PIN',
+              x: 0,
+              y: 1,
+            });
+          }
+        );
+        await interactions.test(
+          'pagination keeps the next comments when its previous page cursor is soft-deleted',
+          async () => {
+            const endpoint = `/v1/photos/${otherPhoto}/comments`;
+            const ids: string[] = [];
+            for (const body of ['첫 번째', '두 번째', '세 번째']) {
+              ids.push(
+                (
+                  await mutation(owner.agent.post(endpoint))
+                    .send({ body })
+                    .expect(201)
+                ).body.comment.id
+              );
+            }
+            const first = (
+              await owner.agent.get(`${endpoint}?limit=1`).expect(200)
+            ).body;
+            assert.equal(first.comments[0].id, ids[2]);
+            await mutation(
+              owner.agent.delete(`${endpoint}/${first.nextCursor}`)
+            ).expect(204);
+            const next = (
+              await owner.agent
+                .get(`${endpoint}?limit=2&cursor=${first.nextCursor}`)
+                .expect(200)
+            ).body;
+            assert.deepEqual(
+              next.comments.map((comment: { id: string }) => comment.id),
+              [ids[1], ids[0]]
+            );
+            assert.equal(next.total, 2);
+            assert.equal(next.nextCursor, null);
+          }
+        );
+        await interactions.test(
+          'authentication, cross-photo IDs, nonmembers and comment ownership cannot be bypassed',
+          async () => {
+            await api.get(comments).expect(401);
+            await mutation(api.post(comments))
+              .send({ body: '거부' })
+              .expect(401);
+            await api.get(reactions).expect(401);
+            await mutation(api.put(reactions))
+              .send({ emoji: '❤️' })
+              .expect(401);
+            for (const endpoint of [comments, reactions])
+              await loser.agent.get(endpoint).expect(404);
+            await mutation(loser.agent.post(comments))
+              .send({ body: '그룹 외부' })
+              .expect(404);
+            await mutation(loser.agent.patch(`${comments}/${generalId}`))
+              .send({ body: '위조 수정' })
+              .expect(404);
+            await mutation(
+              loser.agent.delete(`${comments}/${generalId}`)
+            ).expect(404);
+            await mutation(loser.agent.put(reactions))
+              .send({ emoji: '❤️' })
+              .expect(404);
+            await mutation(loser.agent.delete(reactions)).expect(404);
+            await mutation(winner.agent.patch(`${comments}/${generalId}`))
+              .send({ body: '다른 작성자' })
+              .expect(404);
+            await mutation(
+              winner.agent.delete(`${comments}/${generalId}`)
+            ).expect(404);
+            // Group owners may moderate by deleting, but never rewrite another author's words.
+            await mutation(owner.agent.patch(`${comments}/${pinId}`))
+              .send({ body: '그룹장도 수정 불가' })
+              .expect(404);
+            const wrongPhoto = `/v1/photos/${otherPhoto}/comments/${generalId}`;
+            await mutation(owner.agent.patch(wrongPhoto))
+              .send({ body: '다른 사진의 댓글' })
+              .expect(404);
+            await mutation(owner.agent.delete(wrongPhoto)).expect(404);
+            await owner.agent
+              .get(`/v1/photos/${otherPhoto}/comments?cursor=${generalId}`)
+              .expect(404);
+            const outsidersGroup = (
+              await mutation(loser.agent.post('/v1/groups'))
+                .send({ name: '외부인의 가족' })
+                .expect(201)
+            ).body.group.id;
+            const outsidersAlbum = (
+              await mutation(
+                loser.agent.post(`/v1/groups/${outsidersGroup}/albums`)
+              )
+                .send({ title: '외부 그룹 앨범' })
+                .expect(201)
+            ).body.album.id;
+            const outsidersPhoto = randomUUID();
+            await admin.query(
+              'INSERT INTO woori.photos (id,"groupId","albumId","uploaderId",status,width,height,bytes) VALUES ($1,$2,$3,$4,\'READY\',1200,800,1)',
+              [outsidersPhoto, outsidersGroup, outsidersAlbum, loser.id]
+            );
+            await admin.query(
+              'UPDATE woori.groups SET "usedBytes"=1 WHERE id=$1',
+              [outsidersGroup]
+            );
+            await loser.agent
+              .get(`/v1/photos/${outsidersPhoto}/comments?cursor=${generalId}`)
+              .expect(404);
+            await mutation(
+              loser.agent.patch(
+                `/v1/photos/${outsidersPhoto}/comments/${generalId}`
+              )
+            )
+              .send({ body: '자기 그룹 사진으로 위장' })
+              .expect(404);
+            await mutation(
+              loser.agent.delete(
+                `/v1/photos/${outsidersPhoto}/comments/${generalId}`
+              )
+            ).expect(404);
+            await owner.agent.post(comments).send({ body: 'CSRF' }).expect(403);
+            await owner.agent
+              .put(reactions)
+              .set('Origin', 'https://evil.example')
+              .set('X-Woori-Request', '1')
+              .send({ emoji: '❤️' })
+              .expect(403);
+          }
+        );
+        await interactions.test(
+          'invalid bodies, coordinates, emojis and forged ownership fields are rejected',
+          async () => {
+            for (const body of [
+              { body: '' },
+              { body: '   ' },
+              { body: 'x'.repeat(2001) },
+              { body: 123 },
+              { body: 'missing coordinates', kind: 'PIN' },
+              { body: 'one coordinate', kind: 'PIN', x: 0.5 },
+              { body: 'negative', kind: 'PIN', x: -0.001, y: 0.5 },
+              { body: 'overflow', kind: 'PIN', x: 0.5, y: 1.001 },
+              { body: 'string', kind: 'PIN', x: '0.5', y: 0.5 },
+              { body: 'null', kind: 'PIN', x: null, y: 0.5 },
+              { body: 'not pin', kind: 'GENERAL', x: 0.5, y: 0.5 },
+              { body: 'invalid kind', kind: 'OTHER' },
+              { body: 'forged', authorId: loser.id },
+              { body: 'unsupported reply', parentId: generalId },
+            ])
+              await mutation(owner.agent.post(comments)).send(body).expect(400);
+            await mutation(owner.agent.patch(`${comments}/${generalId}`))
+              .send({ body: '   ' })
+              .expect(400);
+            await mutation(winner.agent.patch(`${comments}/${pinId}`))
+              .send({ body: '좌표 변경 불가', x: 0.3, y: 0.2 })
+              .expect(400);
+            for (const body of [
+              { emoji: 'bad' },
+              { emoji: '' },
+              { emoji: '❤️', userId: loser.id },
+            ])
+              await mutation(owner.agent.put(reactions)).send(body).expect(400);
+            await owner.agent.get(`${comments}?limit=101`).expect(400);
+            await owner.agent.get(`${comments}?cursor=not-a-uuid`).expect(400);
+            for (const endpoint of ['comments', 'reactions'])
+              await owner.agent
+                .get(`/v1/photos/${pending}/${endpoint}`)
+                .expect(404);
+            await mutation(owner.agent.post(`/v1/photos/${pending}/comments`))
+              .send({ body: '처리 전 사진' })
+              .expect(404);
+            await mutation(owner.agent.put(`/v1/photos/${pending}/reactions`))
+              .send({ emoji: '❤️' })
+              .expect(404);
+          }
+        );
+        await interactions.test(
+          'reaction set/change/clear is persistent and concurrent retries cannot create duplicate reactions',
+          async () => {
+            assert.deepEqual(
+              (await owner.agent.get(reactions).expect(200)).body,
+              {
+                reactions: [],
+                myReaction: null,
+                total: 0,
+              }
+            );
+            await Promise.all(
+              Array.from({ length: 6 }, () =>
+                mutation(owner.agent.put(reactions))
+                  .send({ emoji: '❤️' })
+                  .expect(200)
+              )
+            );
+            const own = (await owner.agent.get(reactions).expect(200)).body;
+            assert.deepEqual(own, {
+              reactions: [{ emoji: '❤️', count: 1 }],
+              myReaction: '❤️',
+              total: 1,
+            });
+            const other = (await winner.agent.get(reactions).expect(200)).body;
+            assert.equal(other.myReaction, null);
+            assert.equal(other.total, 1);
+            await mutation(winner.agent.put(reactions))
+              .send({ emoji: '❤️' })
+              .expect(200);
+            const together = (await owner.agent.get(reactions).expect(200))
+              .body;
+            assert.deepEqual(together.reactions, [{ emoji: '❤️', count: 2 }]);
+            assert.equal(together.total, 2);
+            await mutation(owner.agent.put(reactions))
+              .send({ emoji: '👏' })
+              .expect(200);
+            const changed = (await winner.agent.get(reactions).expect(200))
+              .body;
+            assert.equal(changed.total, 2);
+            assert.equal(changed.myReaction, '❤️');
+            assert.deepEqual(
+              new Map(
+                changed.reactions.map((r: { emoji: string; count: number }) => [
+                  r.emoji,
+                  r.count,
+                ])
+              ),
+              new Map([
+                ['❤️', 1],
+                ['👏', 1],
+              ])
+            );
+            const saved = await admin.query(
+              'SELECT emoji FROM woori.reactions WHERE "photoId"=$1 AND "userId"=$2',
+              [photo, owner.id]
+            );
+            assert.deepEqual(saved.rows, [{ emoji: '👏' }]);
+            await mutation(owner.agent.delete(reactions)).expect(200);
+            const cleared = await mutation(
+              owner.agent.delete(reactions)
+            ).expect(200);
+            assert.equal(cleared.body.total, 1);
+            assert.equal(cleared.body.myReaction, null);
+          }
+        );
+        await interactions.test(
+          'removed membership immediately blocks reads and writes; only authors and owners delete comments',
+          async () => {
+            await admin.query(
+              'UPDATE woori.memberships SET status=\'REMOVED\' WHERE "groupId"=$1 AND "userId"=$2',
+              [group, winner.id]
+            );
+            for (const endpoint of [comments, reactions])
+              await winner.agent.get(endpoint).expect(404);
+            await mutation(winner.agent.post(comments))
+              .send({ body: '제거됨' })
+              .expect(404);
+            await mutation(winner.agent.patch(`${comments}/${pinId}`))
+              .send({ body: '제거됨' })
+              .expect(404);
+            await mutation(winner.agent.delete(`${comments}/${pinId}`)).expect(
+              404
+            );
+            await mutation(winner.agent.put(reactions))
+              .send({ emoji: '🥰' })
+              .expect(404);
+            await mutation(winner.agent.delete(reactions)).expect(404);
+            await admin.query(
+              'UPDATE woori.memberships SET status=\'ACTIVE\' WHERE "groupId"=$1 AND "userId"=$2',
+              [group, winner.id]
+            );
+            const authored = (
+              await mutation(winner.agent.post(comments))
+                .send({ body: '작성자가 직접 지울 댓글' })
+                .expect(201)
+            ).body.comment.id;
+            await mutation(
+              winner.agent.delete(`${comments}/${authored}`)
+            ).expect(204);
+            await mutation(
+              winner.agent.delete(`${comments}/${authored}`)
+            ).expect(204);
+            await mutation(owner.agent.delete(`${comments}/${pinId}`)).expect(
+              204
+            );
+            await mutation(winner.agent.patch(`${comments}/${pinId}`))
+              .send({ body: '삭제 후 복원' })
+              .expect(404);
+            assert.equal(
+              (await winner.agent.get(comments).expect(200)).body.total,
+              1
+            );
+            await mutation(
+              owner.agent.delete(`${comments}/${generalId}`)
+            ).expect(204);
+            assert.equal(
+              (await owner.agent.get(comments).expect(200)).body.total,
+              0
+            );
+            const deleted = await admin.query(
+              'SELECT "deletedAt" FROM woori.comments WHERE id=ANY($1::uuid[])',
+              [[generalId, pinId]]
+            );
+            assert.equal(deleted.rowCount, 2);
+            assert.ok(
+              deleted.rows.every((row) => row.deletedAt instanceof Date)
+            );
+          }
+        );
+        await interactions.test(
+          'photo deletion races safely with interaction writes and deleted albums/groups hide all interactions',
+          async () => {
+            const racePhoto = await makePhoto();
+            const raceComments = `/v1/photos/${racePhoto}/comments`;
+            const raceReactions = `/v1/photos/${racePhoto}/reactions`;
+            const outcomes = await Promise.all([
+              mutation(
+                owner.agent.delete(`${albums}/${album}/photos/${racePhoto}`)
+              ),
+              mutation(winner.agent.post(raceComments)).send({
+                body: '삭제 경합',
+              }),
+              mutation(winner.agent.put(raceReactions)).send({ emoji: '😂' }),
+            ]);
+            assert.equal(outcomes[0].status, 204);
+            assert.ok([201, 404].includes(outcomes[1].status));
+            assert.ok([200, 404].includes(outcomes[2].status));
+            for (const endpoint of [raceComments, raceReactions])
+              await owner.agent.get(endpoint).expect(404);
+            await mutation(winner.agent.post(raceComments))
+              .send({ body: '삭제된 사진' })
+              .expect(404);
+            await mutation(winner.agent.put(raceReactions))
+              .send({ emoji: '😂' })
+              .expect(404);
+            await admin.query(
+              "UPDATE woori.groups SET status='DELETING' WHERE id=$1",
+              [group]
+            );
+            await owner.agent.get(comments).expect(404);
+            await owner.agent.get(reactions).expect(404);
+            await mutation(owner.agent.post(comments))
+              .send({ body: '삭제 중인 그룹' })
+              .expect(404);
+            await mutation(owner.agent.put(reactions))
+              .send({ emoji: '😮' })
+              .expect(404);
+            await admin.query(
+              "UPDATE woori.groups SET status='ACTIVE' WHERE id=$1",
+              [group]
+            );
+            await mutation(owner.agent.delete(`${albums}/${album}`)).expect(
+              204
+            );
+            for (const endpoint of [comments, reactions])
+              await owner.agent.get(endpoint).expect(404);
+            await mutation(owner.agent.post(comments))
+              .send({ body: '삭제된 앨범' })
+              .expect(404);
+            await mutation(owner.agent.put(reactions))
+              .send({ emoji: '😮' })
+              .expect(404);
+          }
+        );
       }
     );
     await t.test(
