@@ -1,14 +1,7 @@
 import { All, Controller, ServiceUnavailableException } from '@nestjs/common';
 @Controller(['v1', 'api/v1'])
 export class PrivateApiController {
-  @All([
-    'uploads',
-    'uploads/*path',
-    'comments',
-    'comments/*path',
-    'notifications',
-    'notifications/*path',
-  ])
+  @All(['uploads', 'uploads/*path', 'comments', 'comments/*path'])
   pending(): never {
     throw new ServiceUnavailableException({ code: 'DOMAIN_NOT_READY' });
   }

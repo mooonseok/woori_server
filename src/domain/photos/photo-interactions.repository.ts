@@ -1,3 +1,4 @@
+import { recordPhotoActivity } from '../notifications/notification-events';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/modules/prisma/prisma.service';
@@ -142,6 +143,13 @@ export class PhotoInteractionsRepository {
         },
         select: commentSelect,
       });
+      await recordPhotoActivity(
+        tx,
+        photoId,
+        userId,
+        dto.kind === 'PIN' ? 'PIN' : 'COMMENT',
+        comment.id
+      );
       return { comment: commentSummary(comment, userId, owner) };
     });
   }
@@ -231,6 +239,8 @@ export class PhotoInteractionsRepository {
           create: { photoId, userId, emoji },
           update: { emoji },
         });
+      if (emoji !== null)
+        await recordPhotoActivity(tx, photoId, userId, 'REACTION', photoId);
       return this.reactionSummary(tx, photoId, userId);
     });
   }

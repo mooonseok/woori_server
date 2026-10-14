@@ -677,6 +677,12 @@ test('real PostgreSQL: authentication, private groups and single-use invitation 
     await t.test(
       'albums and media enforce current membership, quotas, completion fencing and private reads',
       async () => {
+        // The earlier invitation test intentionally revoked this fixture member.
+        // Restore it for successful publication recipient checks.
+        await admin.query(
+          'UPDATE woori.memberships SET status=\'ACTIVE\' WHERE "groupId"=$1 AND "userId"=$2',
+          [groupId, winner.id]
+        );
         // Override only this in-process application's storage methods. No runtime fake-storage option exists.
         const storage = app.get(MediaStorageService);
         const objects = new Map<string, Buffer>();
@@ -817,6 +823,34 @@ test('real PostgreSQL: authentication, private groups and single-use invitation 
         );
         const repeated = await mutation(owner.agent.post(complete)).expect(200);
         assert.equal(repeated.body.photo.status, 'READY');
+        const photoNotices = (
+          await winner.agent.get('/v1/notifications?limit=100').expect(200)
+        ).body.notifications.filter(
+          (item: { photoId: string; kind: string }) =>
+            item.photoId === ticket.photoId && item.kind === 'PHOTOS'
+        );
+        assert.equal(
+          photoNotices.length,
+          1,
+          'Repeated completion must publish exactly one recipient notification'
+        );
+        assert.equal(
+          (
+            await owner.agent.get('/v1/notifications?limit=100').expect(200)
+          ).body.notifications.some(
+            (item: { photoId: string }) => item.photoId === ticket.photoId
+          ),
+          false
+        );
+        assert.equal(
+          (
+            await loser.agent.get('/v1/notifications?limit=100').expect(200)
+          ).body.notifications.some(
+            (item: { photoId: string }) => item.photoId === ticket.photoId
+          ),
+          false
+        );
+
         assert.equal(repeated.body.photo.stagingKey, undefined);
         assert.equal(repeated.body.photo.variants, undefined);
         assert.equal(
@@ -1534,6 +1568,478 @@ test('real PostgreSQL: authentication, private groups and single-use invitation 
             await mutation(owner.agent.put(reactions))
               .send({ emoji: '😮' })
               .expect(404);
+          }
+        );
+      }
+    );
+    await t.test(
+      'notification inbox, observed reads and preferences preserve recipient and visibility boundaries',
+      async (notifications) => {
+        const base = '/v1/notifications';
+        const group = (
+          await mutation(owner.agent.post('/v1/groups'))
+            .send({ name: '알림 권한 검증' })
+            .expect(201)
+        ).body.group.id as string;
+        const invitation = (
+          await mutation(owner.agent.post(`/v1/groups/${group}/invitations`))
+            .send({ maxUses: 1 })
+            .expect(201)
+        ).body;
+        await mutation(winner.agent.post('/v1/invitations/join'))
+          .send({ code: invitation.code })
+          .expect(200);
+        const album = (
+          await mutation(owner.agent.post(`/v1/groups/${group}/albums`))
+            .send({ title: '알림 대상 사진' })
+            .expect(201)
+        ).body.album.id as string;
+        const photo = randomUUID();
+        await admin.query(
+          'INSERT INTO woori.photos (id,"groupId","albumId","uploaderId",status,width,height,bytes) VALUES ($1,$2,$3,$4,\'READY\',1200,800,1)',
+          [photo, group, album, owner.id]
+        );
+        const comments = `/v1/photos/${photo}/comments`;
+        const reactions = `/v1/photos/${photo}/reactions`;
+        type Notice = {
+          id: string;
+          kind: string;
+          photoId: string;
+          commentId: string | null;
+          latestSequence: number;
+          readThroughSequence: number;
+          unread: boolean;
+          actor: { id: string; displayName: string };
+        };
+        const inbox = async (account: Account) =>
+          (await account.agent.get(`${base}?limit=100`).expect(200)).body as {
+            notifications: Notice[];
+            unreadCount: number;
+          };
+        let generalId = '';
+        let pinId = '';
+        let generalNotice: Notice;
+        let pinNotice: Notice;
+        let reactionNotice: Notice;
+        await notifications.test(
+          'events persist atomically, exclude the actor and deduplicate repeated reactions',
+          async () => {
+            await api.get(base).expect(401);
+            await api.get(`${base}/preferences`).expect(401);
+            await mutation(owner.agent.post(comments))
+              .send({ body: '본인 댓글' })
+              .expect(201);
+            assert.equal(
+              (await inbox(owner)).notifications.some(
+                (item) => item.photoId === photo
+              ),
+              false
+            );
+            generalId = (
+              await mutation(winner.agent.post(comments))
+                .send({ body: '가족의 댓글' })
+                .expect(201)
+            ).body.comment.id;
+            pinId = (
+              await mutation(winner.agent.post(comments))
+                .send({ body: '위치의 이야기', kind: 'PIN', x: 0.3, y: 0.7 })
+                .expect(201)
+            ).body.comment.id;
+            await Promise.all(
+              Array.from({ length: 4 }, () =>
+                mutation(winner.agent.put(reactions))
+                  .send({ emoji: '❤️' })
+                  .expect(200)
+              )
+            );
+            await mutation(winner.agent.put(reactions))
+              .send({ emoji: '🥰' })
+              .expect(200);
+            const rows = (await inbox(owner)).notifications.filter(
+              (item) => item.photoId === photo
+            );
+            assert.deepEqual(rows.map((item) => item.kind).sort(), [
+              'COMMENT',
+              'PIN',
+              'REACTION',
+            ]);
+            assert.ok(
+              rows.every((item) => item.actor.id === winner.id && item.unread)
+            );
+            generalNotice = rows.find((item) => item.kind === 'COMMENT')!;
+            pinNotice = rows.find((item) => item.kind === 'PIN')!;
+            reactionNotice = rows.find((item) => item.kind === 'REACTION')!;
+            assert.equal(generalNotice.commentId, generalId);
+            assert.equal(pinNotice.commentId, pinId);
+            assert.equal(
+              (await inbox(winner)).notifications.some(
+                (item) => item.photoId === photo
+              ),
+              false
+            );
+            assert.equal(
+              (await inbox(loser)).notifications.some(
+                (item) => item.photoId === photo
+              ),
+              false
+            );
+            const persisted = await admin.query(
+              'SELECT count(*)::int AS count FROM woori.notifications WHERE "recipientId"=$1 AND "groupId"=$2',
+              [owner.id, group]
+            );
+            assert.equal(persisted.rows[0].count, 3);
+            await mutation(winner.agent.delete(reactions)).expect(200);
+            assert.equal(
+              (await inbox(owner)).notifications.some(
+                (item) => item.id === reactionNotice.id
+              ),
+              false
+            );
+            await mutation(winner.agent.put(reactions))
+              .send({ emoji: '👏' })
+              .expect(200);
+            assert.equal(
+              (await inbox(owner)).notifications.filter(
+                (item) => item.id === reactionNotice.id
+              ).length,
+              1
+            );
+          }
+        );
+        await notifications.test(
+          'foreign notification reads, targets and cursors never reveal recipient data',
+          async () => {
+            for (const account of [winner, loser]) {
+              await account.agent
+                .get(`${base}/${generalNotice.id}/target`)
+                .expect(404);
+              await mutation(
+                account.agent.patch(`${base}/${generalNotice.id}/read`)
+              )
+                .send({ throughSequence: 1 })
+                .expect(404);
+              await account.agent
+                .get(`${base}?cursor=${generalNotice.id}`)
+                .expect(404);
+              await mutation(account.agent.post(`${base}/read-all`))
+                .send({
+                  notifications: [{ id: generalNotice.id, throughSequence: 1 }],
+                })
+                .expect(404);
+            }
+            const response = await owner.agent.get(base).expect(200);
+            assert.equal(response.headers['cache-control'], 'no-store');
+            await owner.agent.get(`${base}?limit=101`).expect(400);
+            await owner.agent.get(`${base}?cursor=not-a-uuid`).expect(400);
+            await mutation(
+              owner.agent.patch(`${base}/${generalNotice.id}/read`)
+            )
+              .send({ throughSequence: -1 })
+              .expect(400);
+            await mutation(
+              owner.agent.patch(`${base}/${generalNotice.id}/read`)
+            )
+              .send({ throughSequence: 999 })
+              .expect(400);
+            await mutation(
+              owner.agent.patch(`${base}/${generalNotice.id}/read`)
+            )
+              .send({ throughSequence: 1, recipientId: winner.id })
+              .expect(400);
+          }
+        );
+        await notifications.test(
+          'read-all only acknowledges the observed records and single reads are monotonic',
+          async () => {
+            const observed = (await inbox(owner)).notifications.map((item) => ({
+              id: item.id,
+              throughSequence: item.latestSequence,
+            }));
+            const newId = (
+              await mutation(winner.agent.post(comments))
+                .send({ body: '목록을 읽은 뒤 도착한 새 댓글' })
+                .expect(201)
+            ).body.comment.id;
+            await mutation(owner.agent.post(`${base}/read-all`))
+              .send({ notifications: observed })
+              .expect(200);
+            const after = await inbox(owner);
+            assert.equal(
+              after.notifications.find((item) => item.id === generalNotice.id)
+                ?.unread,
+              false
+            );
+            assert.equal(
+              after.notifications.find((item) => item.commentId === newId)
+                ?.unread,
+              true
+            );
+            await mutation(
+              owner.agent.patch(`${base}/${generalNotice.id}/read`)
+            )
+              .send({ throughSequence: generalNotice.latestSequence })
+              .expect(200);
+            const saved = await admin.query(
+              'SELECT "readThroughSequence" FROM woori.notifications WHERE id=$1',
+              [generalNotice.id]
+            );
+            assert.equal(
+              saved.rows[0].readThroughSequence,
+              generalNotice.latestSequence
+            );
+            const newNotice = after.notifications.find(
+              (item) => item.commentId === newId
+            )!;
+            await mutation(owner.agent.post(`${base}/read-all`))
+              .send({
+                notifications: [
+                  { id: newNotice.id, throughSequence: 1 },
+                  { id: randomUUID(), throughSequence: 1 },
+                ],
+              })
+              .expect(404);
+            assert.equal(
+              (await inbox(owner)).notifications.find(
+                (item) => item.id === newNotice.id
+              )?.unread,
+              true
+            );
+          }
+        );
+        await notifications.test(
+          'preferences persist per account and reject stale versions, foreign groups and invalid input',
+          async () => {
+            const path = `${base}/preferences`;
+            const initial = (await owner.agent.get(path).expect(200)).body;
+            const otherInitial = (await winner.agent.get(path).expect(200)).body
+              .preferences;
+            const saved = (
+              await mutation(owner.agent.patch(path))
+                .send({
+                  version: initial.preferences.version,
+                  enabled: false,
+                  comments: false,
+                  quietEnabled: true,
+                  quietStartMinute: 1320,
+                  quietEndMinute: 480,
+                  timeZone: 'Asia/Seoul',
+                })
+                .expect(200)
+            ).body;
+            assert.equal(saved.preferences.enabled, false);
+            assert.equal(
+              saved.preferences.version,
+              initial.preferences.version + 1
+            );
+            assert.deepEqual(
+              (await winner.agent.get(path).expect(200)).body.preferences,
+              otherInitial
+            );
+            assert.equal(
+              (await owner.agent.get(path).expect(200)).body.preferences
+                .enabled,
+              false
+            );
+            const stale = await mutation(owner.agent.patch(path))
+              .send({ version: initial.preferences.version, enabled: true })
+              .expect(409);
+            assert.equal(stale.body.code, 'PREFERENCES_CONFLICT');
+            const grouped = (
+              await mutation(owner.agent.put(`${path}/groups/${group}`))
+                .send({ version: saved.preferences.version, mode: 'OFF' })
+                .expect(200)
+            ).body;
+            assert.equal(
+              grouped.groups.find(
+                (item: { groupId: string }) => item.groupId === group
+              )?.mode,
+              'OFF'
+            );
+            assert.equal(
+              grouped.preferences.version,
+              saved.preferences.version + 1
+            );
+            await mutation(owner.agent.patch(path))
+              .send({ version: saved.preferences.version, enabled: true })
+              .expect(409);
+            await mutation(loser.agent.put(`${path}/groups/${group}`))
+              .send({ version: 0, mode: 'OFF' })
+              .expect(404);
+            for (const patch of [
+              { quietStartMinute: -1 },
+              { quietEndMinute: 1440 },
+              { quietStartMinute: 1.5 },
+              { timeZone: 'Invalid/Zone' },
+              { enabled: 'false' },
+              { userId: winner.id },
+            ]) {
+              await mutation(owner.agent.patch(path))
+                .send({ version: grouped.preferences.version, ...patch })
+                .expect(400);
+            }
+            await mutation(owner.agent.put(`${path}/groups/${group}`))
+              .send({
+                version: grouped.preferences.version,
+                mode: 'EVERYTHING',
+              })
+              .expect(400);
+            const comment = (
+              await mutation(winner.agent.post(comments))
+                .send({ body: '푸시 설정과 별개로 기록되는 알림' })
+                .expect(201)
+            ).body.comment.id;
+            assert.ok(
+              (await inbox(owner)).notifications.some(
+                (item) => item.commentId === comment
+              )
+            );
+            const outcomes = await Promise.all([
+              mutation(owner.agent.patch(path)).send({
+                version: grouped.preferences.version,
+                preview: true,
+              }),
+              mutation(owner.agent.put(`${path}/groups/${group}`)).send({
+                version: grouped.preferences.version,
+                mode: 'MINE',
+              }),
+            ]);
+            assert.deepEqual(
+              outcomes.map((item) => item.status).sort(),
+              [200, 409]
+            );
+          }
+        );
+        await notifications.test(
+          'deleted targets and revoked membership immediately disappear from inbox, unread counts and target routes',
+          async () => {
+            const before = await inbox(owner);
+            await admin.query(
+              "UPDATE woori.users SET status='SUSPENDED' WHERE id=$1",
+              [winner.id]
+            );
+            assert.equal(
+              (await inbox(owner)).notifications.some(
+                (item) => item.photoId === photo
+              ),
+              false
+            );
+            await owner.agent
+              .get(`${base}/${generalNotice.id}/target`)
+              .expect(404);
+            await admin.query(
+              "UPDATE woori.users SET status='ACTIVE' WHERE id=$1",
+              [winner.id]
+            );
+            await mutation(winner.agent.delete(`${comments}/${pinId}`)).expect(
+              204
+            );
+            assert.equal(
+              (await inbox(owner)).notifications.some(
+                (item) => item.id === pinNotice.id
+              ),
+              false
+            );
+            await owner.agent.get(`${base}/${pinNotice.id}/target`).expect(404);
+            await admin.query(
+              'UPDATE woori.memberships SET status=\'REMOVED\' WHERE "groupId"=$1 AND "userId"=$2',
+              [group, owner.id]
+            );
+            const revoked = await inbox(owner);
+            assert.equal(
+              revoked.notifications.some((item) => item.photoId === photo),
+              false
+            );
+            assert.ok(revoked.unreadCount < before.unreadCount);
+            await owner.agent
+              .get(`${base}/${generalNotice.id}/target`)
+              .expect(404);
+            await mutation(
+              owner.agent.patch(`${base}/${generalNotice.id}/read`)
+            )
+              .send({ throughSequence: 1 })
+              .expect(404);
+            const prefs = (
+              await owner.agent.get(`${base}/preferences`).expect(200)
+            ).body;
+            assert.equal(
+              prefs.groups.some(
+                (item: { groupId: string }) => item.groupId === group
+              ),
+              false
+            );
+            await mutation(
+              owner.agent.put(`${base}/preferences/groups/${group}`)
+            )
+              .send({ version: prefs.preferences.version, mode: 'DEFAULT' })
+              .expect(404);
+            await admin.query(
+              'UPDATE woori.memberships SET status=\'ACTIVE\' WHERE "groupId"=$1 AND "userId"=$2',
+              [group, owner.id]
+            );
+            await admin.query(
+              'UPDATE woori.photos SET "deletedAt"=now() WHERE id=$1',
+              [photo]
+            );
+            assert.equal(
+              (await inbox(owner)).notifications.some(
+                (item) => item.photoId === photo
+              ),
+              false
+            );
+            await owner.agent
+              .get(`${base}/${generalNotice.id}/target`)
+              .expect(404);
+            await admin.query(
+              'UPDATE woori.photos SET "deletedAt"=NULL WHERE id=$1',
+              [photo]
+            );
+            await admin.query(
+              'UPDATE woori.albums SET "deletedAt"=now() WHERE id=$1',
+              [album]
+            );
+            assert.equal(
+              (await inbox(owner)).notifications.some(
+                (item) => item.photoId === photo
+              ),
+              false
+            );
+            await owner.agent
+              .get(`${base}/${reactionNotice.id}/target`)
+              .expect(404);
+          }
+        );
+        await notifications.test(
+          'runtime role can persist inbox data without hard-delete, truncate or push endpoint access',
+          async () => {
+            const runtime = new Pool({
+              connectionString: requireIsolatedDatabase('DATABASE_URL'),
+              max: 1,
+            });
+            try {
+              for (const table of [
+                'notifications',
+                'notification_activities',
+                'notification_preferences',
+                'group_notification_preferences',
+              ]) {
+                const result = await runtime.query(
+                  `SELECT has_table_privilege(current_user, $1, 'SELECT') AS read, has_table_privilege(current_user, $1, 'INSERT') AS insert, has_table_privilege(current_user, $1, 'DELETE') AS delete, has_table_privilege(current_user, $1, 'TRUNCATE') AS truncate`,
+                  [`woori.${table}`]
+                );
+                assert.deepEqual(result.rows[0], {
+                  read: true,
+                  insert: true,
+                  delete: false,
+                  truncate: false,
+                });
+              }
+              const endpoints = await runtime.query(
+                "SELECT has_table_privilege(current_user, 'woori.push_installations', 'SELECT') AS access"
+              );
+              assert.equal(endpoints.rows[0].access, false);
+            } finally {
+              await runtime.end();
+            }
           }
         );
       }

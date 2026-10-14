@@ -1,3 +1,4 @@
+import { recordPhotoActivity } from '../notifications/notification-events';
 import {
   ConflictException,
   GoneException,
@@ -315,6 +316,7 @@ export class PhotosRepository {
         where: { id: groupId },
         data: { usedBytes: { increment: bytes } },
       });
+      await recordPhotoActivity(tx, photoId, userId, 'PHOTOS', photoId);
       return this.summary(result, true);
     });
   }
