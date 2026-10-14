@@ -1,7 +1,7 @@
 {
   "name": "woori_server",
   "product": "우리",
-  "status": "notifications-inbox-and-preferences",
+  "status": "web-push-subscriptions-and-dispatch",
   "plans": "/Users/parkmoonseok/.Codex/projects/woori_server/plans",
   "sharedPlan": "/Users/parkmoonseok/.Codex/projects/woori/plans/00-product-plan.md",
   "implemented": [
@@ -25,16 +25,22 @@
     "transactional active-membership and READY-photo authorization against deletion and revocation races",
     "atomic photo/comment/pin/reaction notification inbox persistence with self exclusion and event deduplication",
     "recipient/current-target scoped inbox pagination, unread counts and observed-sequence read marking",
-    "account/group notification preferences with optimistic version checks and quiet-hours/time-zone validation"
+    "account/group notification preferences with optimistic version checks and quiet-hours/time-zone validation",
+    "session-bound AES-GCM encrypted Web Push subscriptions with strict provider allowlist and logout revocation",
+    "transactional notification outbox and fenced delivery worker with bounded retries, quiet-hours holding and current eligibility checks",
+    "opaque provider payload followed by authenticated display validation; generic lock-screen text by default",
+    "actual Chrome Web Push receipt verified for two fixture accounts using real provider transport; account switch cleanup and revoked-membership deep-link denial verified",
+    "Resend verification email received in Gmail and actual email link confirmed in Chrome; database verification and temporary account cleanup verified"
   ],
   "notImplemented": [
     "production Supabase/Railway/R2 provisioning and deployment",
-    "actual external email delivery verification, mail outbox/retries and account recovery",
+    "mail outbox/retries and account recovery",
     "native refresh tokens, admin authentication/MFA and operations",
-    "push provider subscriptions, dispatch/outbox processing, bundling and quiet-hours delivery",
     "automated orphan reconciliation",
     "production backup and restore validation",
-    "background image processing queue (current upload completion is synchronous)"
+    "background image processing queue (current upload completion is synchronous)",
+    "native FCM/APNs subscriptions and dispatch, upload/reaction push bundling",
+    "production Web Push setup and iPhone/Android physical-device receipt verification"
   ],
   "deployment": {
     "api": "Railway paid; Serverless off",
@@ -55,7 +61,8 @@
     "runtimeRole": "woori_api (NOSUPERUSER, NOBYPASSRLS; separate migration credentials)",
     "authorization": "RLS allows server runtime role across granted rows; per-user group isolation is enforced in API membership queries",
     "runtimeGrants": "prisma/runtime-grants.sql",
-    "pendingMigration": "20261015000000_media_cleanup_jobs (validate in disposable integration DB; apply explicitly to development/production)"
+    "pendingMigration": null,
+    "latestLocalMigration": "20261018000000_web_push (applied to woori_dev with user approval; remote not applied)"
   },
   "runtimeConfiguration": {
     "PORT": "default 3001",
@@ -64,15 +71,21 @@
     "TRUST_PROXY_HOPS": "0 locally; 1 only for a verified single trusted proxy topology",
     "DATABASE_URL": "runtime-only woori_api PostgreSQL connection",
     "MIGRATION_DATABASE_URL": "separate migration connection; explicit migrate/prepare only",
-    "MAIL_MODE": "file locally (no external email); resend after provider setup",
-    "DEV_MAIL_DIR": "absolute private directory outside repositories, development only",
+    "MAIL_MODE": "file for local files without external email; resend for actual email after provider setup",
+    "DEV_MAIL_DIR": "optional; blank uses current user's ~/.woori/dev-mail; override must be absolute and outside repository; development only",
     "RESEND_API_KEY": "server secret for Resend mode; never NEXT_PUBLIC",
     "MAIL_FROM": "verified sender for Resend mode",
     "envLoading": "dev/start/migrate scripts load gitignored .env; DB compose loads .env.local-db",
     "R2_ACCOUNT_ID": "Cloudflare account ID; server only",
     "R2_ACCESS_KEY_ID": "S3 credential scoped to the private development bucket",
     "R2_SECRET_ACCESS_KEY": "server-only secret, never NEXT_PUBLIC",
-    "R2_BUCKET": "private R2 Standard bucket; public access disabled"
+    "R2_BUCKET": "private R2 Standard bucket; public access disabled",
+    "WEB_PUSH_VAPID_PUBLIC_KEY": "public P-256 VAPID key returned to authenticated browser config",
+    "WEB_PUSH_VAPID_PRIVATE_KEY": "private stable VAPID key shared by API/worker; never expose",
+    "WEB_PUSH_VAPID_SUBJECT": "mailto: real operator contact or HTTPS contact URL",
+    "PUSH_ENCRYPTION_KEY": "base64 32-byte AES-GCM key shared by API/worker; back up privately; changing invalidates existing ciphertext",
+    "pushKeySetup": "pnpm push:keys mailto:operator@example.com creates NEW gitignored .env.web-push.local mode0600; copy values privately to API/worker environment",
+    "pushDelivery": "worker polls each10s; fanout up to20 and deliveries up to20 eachpass; notification24h expiry, provider TTL300s, five networkattempts, quietretry60s; provider acceptance does not prove device receipt"
   },
   "localSetupPlan": "/Users/parkmoonseok/.Codex/projects/woori/plans/05-local-auth-setup.md"
 }

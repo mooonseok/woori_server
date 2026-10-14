@@ -45,9 +45,26 @@ export class AuthRepository {
     });
   }
   async revokeSession(tokenHash: string) {
-    await this.prisma.client.session.updateMany({
-      where: { tokenHash, audience: 'web', revokedAt: null },
-      data: { revokedAt: new Date() },
+    await this.prisma.client.$transaction(async (tx) => {
+      const sessions = await tx.session.findMany({
+        where: { tokenHash, audience: 'web' },
+        select: { id: true },
+      });
+      await tx.session.updateMany({
+        where: { tokenHash, audience: 'web', revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      await tx.pushInstallation.updateMany({
+        where: {
+          sessionId: { in: sessions.map((s) => s.id) },
+          revokedAt: null,
+        },
+        data: {
+          enabled: false,
+          revokedAt: new Date(),
+          bindingVersion: { increment: 1 },
+        },
+      });
     });
   }
   async createEmailToken(userId: string, tokenHash: string) {

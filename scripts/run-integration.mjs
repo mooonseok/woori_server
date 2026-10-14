@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import pg from 'pg';
+import webPush from 'web-push';
 process.loadEnvFile('.env');
 const owner = new URL(process.env.MIGRATION_DATABASE_URL ?? '');
 const runtime = new URL(process.env.DATABASE_URL ?? '');
@@ -27,9 +28,14 @@ try {
   await db.query(`CREATE DATABASE "${dbName}"`);
   created = true;
   owner.pathname = runtime.pathname = `/${dbName}`;
+  const vapid = webPush.generateVAPIDKeys();
   const env = {
     ...process.env,
     NODE_ENV: 'test',
+    WEB_PUSH_VAPID_PUBLIC_KEY: vapid.publicKey,
+    WEB_PUSH_VAPID_PRIVATE_KEY: vapid.privateKey,
+    WEB_PUSH_VAPID_SUBJECT: 'mailto:integration@example.test',
+    PUSH_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
     WOORI_INTEGRATION_TEST: '1',
     DATABASE_URL: runtime.toString(),
     MIGRATION_DATABASE_URL: owner.toString(),
@@ -54,7 +60,7 @@ try {
   exitCode =
     spawnSync(
       process.execPath,
-      ['--test', 'dist/integration/auth-groups.test.js'],
+      ['--test', '--test-concurrency=1', 'dist/integration/*.test.js'],
       { env, stdio: 'inherit' }
     ).status ?? 1;
 } finally {

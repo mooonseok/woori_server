@@ -21,6 +21,10 @@ export function startupFailure(error: unknown, port?: number): string {
   const message = error instanceof Error ? error.message : '';
   // Only these exact, value-free messages are safe to expose.
   const configurationErrors: Record<string, string> = {
+    'Web Push requires all VAPID and encryption settings':
+      '웹 푸시 VAPID 공개 키·비밀 키·연락처와 PUSH_ENCRYPTION_KEY 네 가지를 모두 설정하거나 모두 비워 주세요.',
+    'Web Push configuration is invalid (values redacted)':
+      '웹 푸시 VAPID 키 쌍·연락처와 32바이트 base64 암호화 키를 확인하세요. 설정값은 출력하지 않습니다.',
     'PORT must be between 1 and 65535':
       'PORT는 1~65535 사이의 정수여야 합니다.',
     'TRUST_PROXY_HOPS must be 0 or 1 after verifying proxy topology':

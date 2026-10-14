@@ -1,3 +1,4 @@
+import { PushModule } from './domain/push/push.module';
 import { NotificationsModule } from './domain/notifications/notifications.module';
 import { AuthModule } from './domain/auth/auth.module';
 import { InvitationsModule } from './domain/invitations/invitations.module';
@@ -15,6 +16,7 @@ import { AlbumsModule } from './domain/albums/albums.module';
 import { PrivateApiController } from './domain/private-api.controller';
 @Module({
   imports: [
+    PushModule,
     AuthModule,
     InvitationsModule,
     PrismaModule,
