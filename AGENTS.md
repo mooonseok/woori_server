@@ -64,3 +64,15 @@
 - pnpm format으로 전체 포맷, pnpm format:check로 검사한다. Prettier 확장 설치 시 저장에도 적용된다.
 - 커밋 훅은 완전히 스테이징한 파일을 자동 포맷한다. 부분 스테이징 파일에 포맷이 필요하면 변경을 보존하고 차단한다.
 - push와 CI는 포맷 불일치를 차단한다. 마이그레이션·생성 파일·잠금 파일은 자동 포맷하지 않는다.
+
+<!-- WOORI_TEMP_HANDOFF_START -->
+
+## 임시 작업 인계 (2026-10-14 사용자 승인 예외)
+
+- 남은 작업을 시작할 때 `.handoff/remaining-work/README.md`와 `status.json`을 먼저 읽는다.
+- 이 폴더의 계획 문서만 이번 레포 내 보관 예외다. 미래 작업 승인·DB 적용 권한은 별도로 확인한다.
+- 각 작업 완료 시 실제 검증 근거를 status.json에 기록하고 `node .handoff/remaining-work/lifecycle.mjs status`를 실행한다.
+- 전체 완료 및 영구 사실 이관 후 CLEANUP.md에 따라 cleanup dry-run → 명시적 `--apply`로 임시 자료를 정리한다.
+- 일부 기능 완료/단순 완료 발언만으로 삭제하지 않는다. 정리 명령은 코드·환경·DB·R2·다른 저장소를 변경하지 않는다.
+
+<!-- WOORI_TEMP_HANDOFF_END -->
