@@ -1,2 +1,4 @@
-import { IsUUID } from 'class-validator';
-export class GroupParamsDto { @IsUUID() groupId!: string; }
+import { IsUUID } from "class-validator";
+export class GroupParamsDto {
+  @IsUUID() groupId!: string;
+}

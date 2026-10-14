@@ -1,7 +1,7 @@
 {
   "name": "woori_server",
   "product": "우리",
-  "status": "local-postgresql-auth-groups-invitations-implemented",
+  "status": "albums-private-r2-media-verified-with-local-api",
   "plans": "/Users/parkmoonseok/.Codex/projects/woori_server/plans",
   "sharedPlan": "/Users/parkmoonseok/.Codex/projects/woori/plans/00-product-plan.md",
   "implemented": [
@@ -12,15 +12,20 @@
     "membership-scoped groups and album reads; atomic owner membership on group creation",
     "hashed invitation code/link, owner controls and serializable bounded/idempotent joining",
     "database-backed request limiting and explicit verified proxy-hop configuration",
-    "pure notification eligibility policy; isolated PostgreSQL integration tests"
+    "pure notification eligibility policy; isolated PostgreSQL integration tests",
+    "member-scoped album creation and READY photo pagination",
+    "private R2 presigned staging PUT, bounded image validation and metadata-stripped variants",
+    "current-membership authenticated photo content proxy, lease-fenced completion and group quota reservation",
+    "actual R2 upload/variant reads, original checksums, browser CORS and browser upload flow verified with isolated local PostgreSQL"
   ],
   "notImplemented": [
     "production Supabase/Railway/R2 provisioning and deployment",
     "actual external email delivery verification, mail outbox/retries and account recovery",
     "native refresh tokens, admin authentication/MFA and operations",
-    "album/photo writes, R2 upload/media adapters and image processing",
     "persisted comments/reactions/notifications and push providers",
-    "worker queue handlers, production backup and restore validation"
+    "worker queue handlers, production backup and restore validation",
+    "automated orphan reconciliation",
+    "album/photo edits and deletion; background media queue (current completion is synchronous)"
   ],
   "deployment": {
     "api": "Railway paid; Serverless off",
@@ -53,7 +58,11 @@
     "DEV_MAIL_DIR": "absolute private directory outside repositories, development only",
     "RESEND_API_KEY": "server secret for Resend mode; never NEXT_PUBLIC",
     "MAIL_FROM": "verified sender for Resend mode",
-    "envLoading": "dev/start/migrate scripts load gitignored .env; DB compose loads .env.local-db"
+    "envLoading": "dev/start/migrate scripts load gitignored .env; DB compose loads .env.local-db",
+    "R2_ACCOUNT_ID": "Cloudflare account ID; server only",
+    "R2_ACCESS_KEY_ID": "S3 credential scoped to the private development bucket",
+    "R2_SECRET_ACCESS_KEY": "server-only secret, never NEXT_PUBLIC",
+    "R2_BUCKET": "private R2 Standard bucket; public access disabled"
   },
   "localSetupPlan": "/Users/parkmoonseok/.Codex/projects/woori/plans/05-local-auth-setup.md"
 }

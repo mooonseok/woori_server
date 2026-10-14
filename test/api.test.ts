@@ -14,7 +14,7 @@ test('health contract, private routes, fabricated credentials and CORS', async (
     await app.listen(0, '127.0.0.1');
     const api = request(app.getHttpServer());
     const health = await api.get('/healthz').expect(200);
-    assert.deepEqual(health.body, { service: 'woori-api', status: 'alive', implementation: 'auth-groups', featuresReady: false });
+    assert.deepEqual(health.body, { service: 'woori-api', status: 'alive', implementation: 'auth-groups-media', featuresReady: false });
     assert.equal(health.headers['cache-control'], 'no-store');
     const ready = await api.get('/readyz').expect(503);
     assert.deepEqual(ready.body, { status: 'not_ready', code: 'DEPENDENCIES_NOT_READY' });
