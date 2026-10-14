@@ -1,7 +1,7 @@
 {
   "name": "woori_server",
   "product": "우리",
-  "status": "web-push-subscriptions-and-dispatch",
+  "status": "account-recovery-and-profile",
   "plans": "/Users/parkmoonseok/.Codex/projects/woori_server/plans",
   "sharedPlan": "/Users/parkmoonseok/.Codex/projects/woori/plans/00-product-plan.md",
   "implemented": [
@@ -30,11 +30,12 @@
     "transactional notification outbox and fenced delivery worker with bounded retries, quiet-hours holding and current eligibility checks",
     "opaque provider payload followed by authenticated display validation; generic lock-screen text by default",
     "actual Chrome Web Push receipt verified for two fixture accounts using real provider transport; account switch cleanup and revoked-membership deep-link denial verified",
-    "Resend verification email received in Gmail and actual email link confirmed in Chrome; database verification and temporary account cleanup verified"
+    "Resend verification email received in Gmail and actual email link confirmed in Chrome; database verification and temporary account cleanup verified",
+    "name/email account recovery with generic responses and rate limits; hashed one-time 30-minute reset tokens with transactional session/push revocation and login-race fencing; current-user profile name update"
   ],
   "notImplemented": [
     "production Supabase/Railway/R2 provisioning and deployment",
-    "mail outbox/retries and account recovery",
+    "mail outbox/retries",
     "native refresh tokens, admin authentication/MFA and operations",
     "automated orphan reconciliation",
     "production backup and restore validation",

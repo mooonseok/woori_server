@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   Post,
+  Patch,
   Req,
   Res,
 } from '@nestjs/common';
@@ -11,11 +12,20 @@ import type { Request, Response } from 'express';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { SessionUser } from '../../common/dto/session-user.dto';
+import { RecoveryService } from './recovery.service';
+import {
+  RecoveryRequestDto,
+  ResetPasswordDto,
+  UpdateProfileDto,
+} from './dto/auth.dto';
 import { AuthService } from './auth.service';
 import { ConfirmEmailDto, LoginDto, SignupDto } from './dto/auth.dto';
 @Controller('v1/auth')
 export class AuthController {
-  constructor(private readonly service: AuthService) {}
+  constructor(
+    private readonly service: AuthService,
+    private readonly recovery: RecoveryService
+  ) {}
   @Public()
   @Post('signup')
   signup(
@@ -34,6 +44,28 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response
   ) {
     return this.service.login(dto, request, response);
+  }
+  @Public()
+  @Post('recovery/username')
+  @HttpCode(202)
+  recoverUsername(@Body() dto: RecoveryRequestDto, @Req() request: Request) {
+    return this.recovery.request('username', dto, request);
+  }
+  @Public()
+  @Post('recovery/password')
+  @HttpCode(202)
+  recoverPassword(@Body() dto: RecoveryRequestDto, @Req() request: Request) {
+    return this.recovery.request('password', dto, request);
+  }
+  @Public()
+  @Post('recovery/password/confirm')
+  @HttpCode(204)
+  resetPassword(@Body() dto: ResetPasswordDto, @Req() request: Request) {
+    return this.recovery.reset(dto, request);
+  }
+  @Patch('profile')
+  profile(@CurrentUser() user: SessionUser, @Body() dto: UpdateProfileDto) {
+    return this.recovery.profile(user.id, dto.displayName);
   }
   @Get('me')
   me(@CurrentUser() user: SessionUser) {
