@@ -190,6 +190,13 @@ model Photo {
   height            Int?
   capturedAt        DateTime?      @db.Timestamptz(6)
   captureDateSource String?        @db.VarChar(24)
+  stagingKey        String?        @db.VarChar(512)
+  uploadMime        String?        @db.VarChar(80)
+  uploadBytes       BigInt         @default(0)
+  reservedBytes     BigInt         @default(0)
+  uploadExpiresAt   DateTime?      @db.Timestamptz(6)
+  processingToken   String?        @db.Uuid
+  processingUntil   DateTime?      @db.Timestamptz(6)
   createdAt         DateTime       @default(now()) @db.Timestamptz(6)
   deletedAt         DateTime?      @db.Timestamptz(6)
   group             Group          @relation(fields: [groupId], references: [id], onDelete: Restrict)
@@ -200,7 +207,8 @@ model Photo {
   reactions         Reaction[]
 
   @@unique([id, groupId])
-  @@index([albumId, status, createdAt])
+  @@index([albumId, status, createdAt, id])
+  @@index([groupId, status, uploadExpiresAt])
   @@map("photos")
   @@schema("woori")
 }
