@@ -38,4 +38,6 @@ jobs:
       - run: pnpm policy:quality
       - name: Remove ephemeral CI database
         if: always()
-        run: docker compose --env-file .env.local-db -f compose.local.yml down --volumes
+        run:
+          docker compose --env-file .env.local-db -f compose.local.yml down
+          --volumes

@@ -3,6 +3,7 @@
 이 파일은 Codex와 Claude가 공유하는 저장소 지침의 정본이다.
 
 ## 프로젝트
+
 - NestJS 구조는 src/common, src/domain, src/admin이며 워커는 src/worker에 분리한다.
 - controller는 요청·응답, service는 정책, repository는 데이터 접근을 담당한다.
 - PostgreSQL 모델과 마이그레이션은 prisma, 실행 API 계약은 contracts/openapi.json이 정본이다.
@@ -18,6 +19,7 @@
   로컬 검증을 운영 배포·외부 메일 발송·스토리지 연결 완료로 보고하지 않는다.
 
 ## 실행과 검증
+
 - nvm use 후 pnpm을 사용한다. 로컬 API: pnpm dev, localhost:3001.
 - 로컬 DB: pnpm dev:db. 이미 마련된 비공개 환경 파일을 사용한다.
 - pnpm dev:db:prepare는 로컬 DB에 마이그레이션·역할 권한을 적용하는 변경 명령이다.
@@ -56,3 +58,9 @@
 - pnpm policy:check / policy:test로 연결과 실제 차단을 검증한다. 상세 실행 한계는 아래 절차를 읽는다.
 - Codex/Claude 훅 사용·검증·해제: .claude/skills/woori-verify/references/policy-operations.md.
 - 로컬 훅은 우회 불가능한 보안 경계가 아니다. CI 설정 파일만으로 원격 필수 검사가 활성화되지는 않는다.
+
+## 코드 포맷
+
+- pnpm format으로 전체 포맷, pnpm format:check로 검사한다. Prettier 확장 설치 시 저장에도 적용된다.
+- 커밋 훅은 완전히 스테이징한 파일을 자동 포맷한다. 부분 스테이징 파일에 포맷이 필요하면 변경을 보존하고 차단한다.
+- push와 CI는 포맷 불일치를 차단한다. 마이그레이션·생성 파일·잠금 파일은 자동 포맷하지 않는다.

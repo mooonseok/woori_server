@@ -1,5 +1,5 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
-import { AlbumsRepository } from "./albums.repository";
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { AlbumsRepository } from './albums.repository';
 @Injectable()
 export class AlbumsService {
   constructor(private readonly repository: AlbumsRepository) {}
@@ -10,8 +10,8 @@ export class AlbumsService {
     const membership = await this.repository.hasMember(groupId, userId);
     if (!membership)
       throw new NotFoundException({
-        code: "GROUP_NOT_FOUND",
-        message: "그룹을 찾을 수 없어요.",
+        code: 'GROUP_NOT_FOUND',
+        message: '그룹을 찾을 수 없어요.',
       });
     return {
       albums: (await this.repository.findActiveForMember(groupId, userId)).map(
@@ -22,8 +22,22 @@ export class AlbumsService {
           createdAt: album.createdAt,
           photoCount: album._count.photos,
           coverPhotoId: album.photos[0]?.id ?? null,
-        }),
+          canManage: membership.role === 'OWNER',
+        })
       ),
     };
+  }
+  async rename(
+    groupId: string,
+    albumId: string,
+    userId: string,
+    title: string
+  ) {
+    return {
+      album: await this.repository.rename(groupId, albumId, userId, title),
+    };
+  }
+  remove(groupId: string, albumId: string, userId: string) {
+    return this.repository.remove(groupId, albumId, userId);
   }
 }

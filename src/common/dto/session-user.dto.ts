@@ -6,4 +6,6 @@ export interface SessionUser {
   email: string;
   emailVerified: boolean;
 }
-export interface SessionRequest extends Request { user?: SessionUser; }
+export interface SessionRequest extends Request {
+  user?: SessionUser;
+}

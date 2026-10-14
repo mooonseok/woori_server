@@ -1,10 +1,10 @@
 ---
 paths:
-  - "**/dto/**"
-  - "**/services/**"
-  - "src/**"
-  - "contracts/**"
-  - "prisma/**"
+  - '**/dto/**'
+  - '**/services/**'
+  - 'src/**'
+  - 'contracts/**'
+  - 'prisma/**'
 ---
 
 공개 API 계약 정본은 woori_server/contracts/openapi.json이다. 저장소 간 소스 직접 import는 하지 않는다.

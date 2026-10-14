@@ -1,7 +1,7 @@
 {
   "name": "woori_server",
   "product": "우리",
-  "status": "albums-private-r2-media-verified-with-local-api",
+  "status": "album-photo-management-with-durable-private-media-cleanup",
   "plans": "/Users/parkmoonseok/.Codex/projects/woori_server/plans",
   "sharedPlan": "/Users/parkmoonseok/.Codex/projects/woori/plans/00-product-plan.md",
   "implemented": [
@@ -16,16 +16,19 @@
     "member-scoped album creation and READY photo pagination",
     "private R2 presigned staging PUT, bounded image validation and metadata-stripped variants",
     "current-membership authenticated photo content proxy, lease-fenced completion and group quota reservation",
-    "actual R2 upload/variant reads, original checksums, browser CORS and browser upload flow verified with isolated local PostgreSQL"
+    "actual R2 upload/variant reads, original checksums, browser CORS and browser upload flow verified with isolated local PostgreSQL",
+    "owner-only album title update/deletion and active owner/uploader photo deletion",
+    "transactional tombstones and quota release, upload completion/deletion fencing, permission summaries",
+    "durable media cleanup queue with expiring worker leases, verified private object deletion and retry"
   ],
   "notImplemented": [
     "production Supabase/Railway/R2 provisioning and deployment",
     "actual external email delivery verification, mail outbox/retries and account recovery",
     "native refresh tokens, admin authentication/MFA and operations",
     "persisted comments/reactions/notifications and push providers",
-    "worker queue handlers, production backup and restore validation",
     "automated orphan reconciliation",
-    "album/photo edits and deletion; background media queue (current completion is synchronous)"
+    "production backup and restore validation",
+    "background image processing queue (current upload completion is synchronous)"
   ],
   "deployment": {
     "api": "Railway paid; Serverless off",
@@ -45,7 +48,8 @@
     "remoteApplied": false,
     "runtimeRole": "woori_api (NOSUPERUSER, NOBYPASSRLS; separate migration credentials)",
     "authorization": "RLS allows server runtime role across granted rows; per-user group isolation is enforced in API membership queries",
-    "runtimeGrants": "prisma/runtime-grants.sql"
+    "runtimeGrants": "prisma/runtime-grants.sql",
+    "pendingMigration": "20261015000000_media_cleanup_jobs (validate in disposable integration DB; apply explicitly to development/production)"
   },
   "runtimeConfiguration": {
     "PORT": "default 3001",
