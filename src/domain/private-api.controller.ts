@@ -2,8 +2,6 @@ import { All, Controller, ServiceUnavailableException } from '@nestjs/common';
 @Controller(['v1', 'api/v1'])
 export class PrivateApiController {
   @All([
-    'photos',
-    'photos/*path',
     'uploads',
     'uploads/*path',
     'comments',
