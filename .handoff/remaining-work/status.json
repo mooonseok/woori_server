@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "repository": "woori_server",
+  "baselineDate": "2026-10-14",
+  "tasks": [
+    {
+      "id": "W01",
+      "title": "계정 복구·이름 수정",
+      "status": "pending",
+      "evidence": [],
+      "implementationRefs": [],
+      "peerEvidence": []
+    },
+    {
+      "id": "W02",
+      "title": "그룹 수명 관리",
+      "status": "pending",
+      "evidence": [],
+      "implementationRefs": [],
+      "peerEvidence": []
+    },
+    {
+      "id": "W03",
+      "title": "촬영일·추억 홈",
+      "status": "pending",
+      "evidence": [],
+      "implementationRefs": [],
+      "peerEvidence": []
+    },
+    {
+      "id": "W04",
+      "title": "모바일 사진·처리 안정성",
+      "status": "pending",
+      "evidence": [],
+      "implementationRefs": [],
+      "peerEvidence": []
+    },
+    {
+      "id": "W05",
+      "title": "계정 수명·서비스 안내",
+      "status": "pending",
+      "evidence": [],
+      "implementationRefs": [],
+      "peerEvidence": []
+    },
+    {
+      "id": "W06",
+      "title": "관리자",
+      "status": "pending",
+      "evidence": [],
+      "implementationRefs": [],
+      "peerEvidence": []
+    },
+    {
+      "id": "W07",
+      "title": "가족 베타 운영",
+      "status": "pending",
+      "evidence": [],
+      "implementationRefs": [],
+      "peerEvidence": []
+    },
+    {
+      "id": "W08",
+      "title": "네이티브 출시",
+      "status": "pending",
+      "evidence": [],
+      "implementationRefs": [],
+      "peerEvidence": []
+    }
+  ],
+  "pendingDecisions": ["각 W 시작 전 DESIGN.md의 해당 결정사항 확인"],
+  "durableDecisionsMoved": false,
+  "permanentRefs": []
+}
