@@ -26,7 +26,9 @@
     "policy:check": "node scripts/policy/check.mjs",
     "policy:test": "node --test scripts/policy/*.test.mjs",
     "policy:quality": "node scripts/policy/gate.mjs quality",
-    "policy:ci": "node scripts/policy/gate.mjs ci"
+    "policy:ci": "node scripts/policy/gate.mjs ci",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1151.0",
@@ -52,6 +54,7 @@
     "@types/supertest": "6.0.3",
     "prisma": "7.0.0",
     "supertest": "7.1.4",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "prettier": "3.9.10"
   }
 }

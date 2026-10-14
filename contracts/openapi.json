@@ -72,9 +72,7 @@
             }
           }
         },
-        "tags": [
-          "health"
-        ]
+        "tags": ["health"]
       }
     },
     "/readyz": {
@@ -142,9 +140,7 @@
             }
           }
         },
-        "tags": [
-          "health"
-        ]
+        "tags": ["health"]
       }
     },
     "/v1/auth/signup": {
@@ -312,9 +308,7 @@
             }
           }
         },
-        "tags": [
-          "authentication"
-        ]
+        "tags": ["authentication"]
       }
     },
     "/v1/auth/login": {
@@ -482,9 +476,7 @@
             }
           }
         },
-        "tags": [
-          "authentication"
-        ]
+        "tags": ["authentication"]
       }
     },
     "/v1/auth/me": {
@@ -578,9 +570,7 @@
             }
           }
         },
-        "tags": [
-          "authentication"
-        ]
+        "tags": ["authentication"]
       }
     },
     "/v1/auth/logout": {
@@ -674,9 +664,7 @@
             "$ref": "#/components/parameters/WooriRequest"
           }
         ],
-        "tags": [
-          "authentication"
-        ]
+        "tags": ["authentication"]
       }
     },
     "/v1/auth/email-verification/request": {
@@ -816,9 +804,7 @@
             "$ref": "#/components/parameters/WooriRequest"
           }
         ],
-        "tags": [
-          "authentication"
-        ]
+        "tags": ["authentication"]
       }
     },
     "/v1/auth/email-verification/confirm": {
@@ -987,9 +973,7 @@
             }
           }
         },
-        "tags": [
-          "authentication"
-        ]
+        "tags": ["authentication"]
       }
     },
     "/v1/groups": {
@@ -1083,9 +1067,7 @@
             }
           }
         },
-        "tags": [
-          "groups"
-        ]
+        "tags": ["groups"]
       },
       "post": {
         "operationId": "createGroup",
@@ -1252,9 +1234,7 @@
             }
           }
         },
-        "tags": [
-          "groups"
-        ]
+        "tags": ["groups"]
       }
     },
     "/v1/groups/{groupId}": {
@@ -1397,9 +1377,7 @@
             }
           }
         ],
-        "tags": [
-          "groups"
-        ]
+        "tags": ["groups"]
       }
     },
     "/v1/groups/{groupId}/invitations": {
@@ -1615,9 +1593,7 @@
             }
           }
         },
-        "tags": [
-          "invitations"
-        ]
+        "tags": ["invitations"]
       },
       "get": {
         "operationId": "listInvitations",
@@ -1777,9 +1753,7 @@
             }
           }
         ],
-        "tags": [
-          "invitations"
-        ]
+        "tags": ["invitations"]
       }
     },
     "/v1/groups/{groupId}/invitations/{invitationId}": {
@@ -1968,9 +1942,7 @@
             "$ref": "#/components/parameters/WooriRequest"
           }
         ],
-        "tags": [
-          "invitations"
-        ]
+        "tags": ["invitations"]
       }
     },
     "/v1/invitations/preview": {
@@ -2151,9 +2123,7 @@
             }
           }
         },
-        "tags": [
-          "invitations"
-        ]
+        "tags": ["invitations"]
       }
     },
     "/v1/invitations/join": {
@@ -2360,9 +2330,7 @@
             }
           }
         },
-        "tags": [
-          "invitations"
-        ]
+        "tags": ["invitations"]
       }
     },
     "/v1/groups/{groupId}/albums": {
@@ -2505,9 +2473,7 @@
             }
           }
         ],
-        "tags": [
-          "albums"
-        ]
+        "tags": ["albums"]
       },
       "post": {
         "operationId": "createGroupAlbum",
@@ -2538,9 +2504,7 @@
             "$ref": "#/components/parameters/WooriRequest"
           }
         ],
-        "tags": [
-          "albums"
-        ],
+        "tags": ["albums"],
         "responses": {
           "201": {
             "description": "성공.",
@@ -2732,9 +2696,7 @@
             }
           }
         ],
-        "tags": [
-          "photos"
-        ],
+        "tags": ["photos"],
         "responses": {
           "200": {
             "description": "성공.",
@@ -2886,9 +2848,7 @@
             "$ref": "#/components/parameters/WooriRequest"
           }
         ],
-        "tags": [
-          "photos"
-        ],
+        "tags": ["photos"],
         "responses": {
           "201": {
             "description": "성공.",
@@ -3105,9 +3065,7 @@
             "$ref": "#/components/parameters/WooriRequest"
           }
         ],
-        "tags": [
-          "photos"
-        ],
+        "tags": ["photos"],
         "responses": {
           "200": {
             "description": "성공.",
@@ -3330,18 +3288,12 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": [
-                "thumbnail",
-                "display",
-                "original"
-              ],
+              "enum": ["thumbnail", "display", "original"],
               "default": "display"
             }
           }
         ],
-        "tags": [
-          "photos"
-        ],
+        "tags": ["photos"],
         "responses": {
           "200": {
             "description": "성공.",
@@ -3493,9 +3445,7 @@
             "DevelopmentSession": []
           }
         ],
-        "tags": [
-          "albums"
-        ],
+        "tags": ["albums"],
         "responses": {
           "400": {
             "description": "잘못된 UUID/본문/쿼리 또는 실제 파일이 선언한 형식·크기와 다름. INVALID_PHOTO_FILE.",
@@ -3673,9 +3623,7 @@
             "DevelopmentSession": []
           }
         ],
-        "tags": [
-          "albums"
-        ],
+        "tags": ["albums"],
         "responses": {
           "400": {
             "description": "잘못된 UUID/본문/쿼리 또는 실제 파일이 선언한 형식·크기와 다름. INVALID_PHOTO_FILE.",
@@ -3830,9 +3778,7 @@
             "DevelopmentSession": []
           }
         ],
-        "tags": [
-          "photos"
-        ],
+        "tags": ["photos"],
         "responses": {
           "400": {
             "description": "잘못된 UUID/본문/쿼리 또는 실제 파일이 선언한 형식·크기와 다름. INVALID_PHOTO_FILE.",
@@ -4028,13 +3974,7 @@
       "User": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "id",
-          "username",
-          "displayName",
-          "email",
-          "emailVerified"
-        ],
+        "required": ["id", "username", "displayName", "email", "emailVerified"],
         "properties": {
           "id": {
             "type": "string",
@@ -4058,9 +3998,7 @@
       "UserResponse": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "user"
-        ],
+        "required": ["user"],
         "properties": {
           "user": {
             "$ref": "#/components/schemas/User"
@@ -4070,20 +4008,14 @@
       "SignupResponse": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "user",
-          "verificationDelivery"
-        ],
+        "required": ["user", "verificationDelivery"],
         "properties": {
           "user": {
             "$ref": "#/components/schemas/User"
           },
           "verificationDelivery": {
             "type": "string",
-            "enum": [
-              "sent",
-              "unavailable"
-            ],
+            "enum": ["sent", "unavailable"],
             "description": "가입과 세션 생성 성공 여부와 별개의 메일 전송 결과. unavailable이면 로그인 상태에서 재전송할 수 있다."
           }
         }
@@ -4091,10 +4023,7 @@
       "LoginRequest": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "username",
-          "password"
-        ],
+        "required": ["username", "password"],
         "properties": {
           "username": {
             "type": "string",
@@ -4113,12 +4042,7 @@
       "SignupRequest": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "username",
-          "password",
-          "displayName",
-          "email"
-        ],
+        "required": ["username", "password", "displayName", "email"],
         "properties": {
           "username": {
             "type": "string",
@@ -4149,9 +4073,7 @@
       "ConfirmEmailRequest": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "token"
-        ],
+        "required": ["token"],
         "properties": {
           "token": {
             "type": "string",
@@ -4163,9 +4085,7 @@
       "AcceptedResponse": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "accepted"
-        ],
+        "required": ["accepted"],
         "properties": {
           "accepted": {
             "const": true
@@ -4175,12 +4095,7 @@
       "Group": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "id",
-          "name",
-          "members",
-          "role"
-        ],
+        "required": ["id", "name", "members", "role"],
         "properties": {
           "id": {
             "type": "string",
@@ -4196,19 +4111,14 @@
           },
           "role": {
             "type": "string",
-            "enum": [
-              "OWNER",
-              "MEMBER"
-            ]
+            "enum": ["OWNER", "MEMBER"]
           }
         }
       },
       "GroupResponse": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "group"
-        ],
+        "required": ["group"],
         "properties": {
           "group": {
             "$ref": "#/components/schemas/Group"
@@ -4218,9 +4128,7 @@
       "GroupsResponse": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "groups"
-        ],
+        "required": ["groups"],
         "properties": {
           "groups": {
             "type": "array",
@@ -4233,9 +4141,7 @@
       "CreateGroupRequest": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "name"
-        ],
+        "required": ["name"],
         "properties": {
           "name": {
             "type": "string",
@@ -4252,19 +4158,13 @@
         "required": [],
         "properties": {
           "expiresInHours": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "minimum": 24,
             "maximum": 168,
             "default": 72
           },
           "maxUses": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "minimum": 1,
             "maximum": 50,
             "default": 10
@@ -4290,23 +4190,15 @@
         },
         "oneOf": [
           {
-            "required": [
-              "code"
-            ],
+            "required": ["code"],
             "not": {
-              "required": [
-                "token"
-              ]
+              "required": ["token"]
             }
           },
           {
-            "required": [
-              "token"
-            ],
+            "required": ["token"],
             "not": {
-              "required": [
-                "code"
-              ]
+              "required": ["code"]
             }
           }
         ]
@@ -4314,13 +4206,7 @@
       "InvitationCreated": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "id",
-          "code",
-          "url",
-          "expiresAt",
-          "maxUses"
-        ],
+        "required": ["id", "code", "url", "expiresAt", "maxUses"],
         "properties": {
           "id": {
             "type": "string",
@@ -4371,10 +4257,7 @@
             "format": "date-time"
           },
           "revokedAt": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "format": "date-time"
           },
           "maxUses": {
@@ -4388,9 +4271,7 @@
       "InvitationsResponse": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "invitations"
-        ],
+        "required": ["invitations"],
         "properties": {
           "invitations": {
             "type": "array",
@@ -4405,10 +4286,7 @@
       "InvitationPreview": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "groupName",
-          "expiresAt"
-        ],
+        "required": ["groupName", "expiresAt"],
         "properties": {
           "groupName": {
             "type": "string"
@@ -4422,10 +4300,7 @@
       "JoinResponse": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "group",
-          "alreadyMember"
-        ],
+        "required": ["group", "alreadyMember"],
         "properties": {
           "group": {
             "$ref": "#/components/schemas/Group"
@@ -4469,12 +4344,7 @@
       "Liveness": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "service",
-          "status",
-          "implementation",
-          "featuresReady"
-        ],
+        "required": ["service", "status", "implementation", "featuresReady"],
         "properties": {
           "service": {
             "const": "woori-api"
@@ -4493,10 +4363,7 @@
       "Readiness": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "status",
-          "capabilities"
-        ],
+        "required": ["status", "capabilities"],
         "properties": {
           "status": {
             "const": "ready"
@@ -4535,10 +4402,7 @@
       "NotReady": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "status",
-          "code"
-        ],
+        "required": ["status", "code"],
         "properties": {
           "status": {
             "const": "not_ready"
@@ -4581,10 +4445,7 @@
             "minimum": 0
           },
           "coverPhotoId": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "format": "uuid"
           },
           "canManage": {
@@ -4596,9 +4457,7 @@
       "AlbumsResponse": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "albums"
-        ],
+        "required": ["albums"],
         "properties": {
           "albums": {
             "type": "array",
@@ -4613,9 +4472,7 @@
       "CreateAlbum": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "title"
-        ],
+        "required": ["title"],
         "properties": {
           "title": {
             "type": "string",
@@ -4628,9 +4485,7 @@
       "AlbumResponse": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "album"
-        ],
+        "required": ["album"],
         "properties": {
           "album": {
             "$ref": "#/components/schemas/Album"
@@ -4673,10 +4528,7 @@
             "minimum": 1
           },
           "capturedAt": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "format": "date-time"
           },
           "createdAt": {
@@ -4695,9 +4547,7 @@
       "PhotoResponse": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "photo"
-        ],
+        "required": ["photo"],
         "properties": {
           "photo": {
             "$ref": "#/components/schemas/MediaPhoto"
@@ -4707,10 +4557,7 @@
       "PhotosResponse": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "photos",
-          "nextCursor"
-        ],
+        "required": ["photos", "nextCursor"],
         "properties": {
           "photos": {
             "type": "array",
@@ -4720,10 +4567,7 @@
             }
           },
           "nextCursor": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "format": "uuid"
           }
         }
@@ -4731,11 +4575,7 @@
       "UploadPhoto": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "filename",
-          "contentType",
-          "bytes"
-        ],
+        "required": ["filename", "contentType", "bytes"],
         "properties": {
           "filename": {
             "type": "string",
@@ -4744,11 +4584,7 @@
           },
           "contentType": {
             "type": "string",
-            "enum": [
-              "image/jpeg",
-              "image/png",
-              "image/webp"
-            ]
+            "enum": ["image/jpeg", "image/png", "image/webp"]
           },
           "bytes": {
             "type": "integer",
@@ -4760,12 +4596,7 @@
       "UploadTicket": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "photoId",
-          "uploadUrl",
-          "headers",
-          "expiresAt"
-        ],
+        "required": ["photoId", "uploadUrl", "headers", "expiresAt"],
         "properties": {
           "photoId": {
             "type": "string",
@@ -4779,17 +4610,11 @@
           "headers": {
             "type": "object",
             "additionalProperties": false,
-            "required": [
-              "Content-Type"
-            ],
+            "required": ["Content-Type"],
             "properties": {
               "Content-Type": {
                 "type": "string",
-                "enum": [
-                  "image/jpeg",
-                  "image/png",
-                  "image/webp"
-                ]
+                "enum": ["image/jpeg", "image/png", "image/webp"]
               }
             }
           },

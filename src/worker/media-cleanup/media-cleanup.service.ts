@@ -4,10 +4,14 @@ import { MediaCleanupRepository } from './media-cleanup.repository';
 
 @Injectable()
 export class MediaCleanupService {
-  constructor(private readonly repository: MediaCleanupRepository, private readonly storage: MediaStorageService) {}
+  constructor(
+    private readonly repository: MediaCleanupRepository,
+    private readonly storage: MediaStorageService
+  ) {}
   /** One bounded pass; callable by the worker or an isolated integration test. */
   async runBatch(limit = 10): Promise<{ completed: number; retried: number }> {
-    if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('Invalid cleanup batch size');
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100)
+      throw new Error('Invalid cleanup batch size');
     const result = { completed: 0, retried: 0 };
     for (let index = 0; index < limit; index++) {
       const job = await this.repository.claim();

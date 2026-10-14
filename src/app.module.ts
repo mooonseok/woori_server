@@ -12,7 +12,22 @@ import { GroupsModule } from './domain/groups/groups.module';
 import { PhotosModule } from './domain/photos/photos.module';
 import { AlbumsModule } from './domain/albums/albums.module';
 import { PrivateApiController } from './domain/private-api.controller';
-@Module({ imports: [AuthModule, InvitationsModule, PrismaModule, HealthModule, GroupsModule, AlbumsModule, PhotosModule, AdminModule], controllers: [PrivateApiController], providers: [
-  { provide: APP_GUARD, useClass: OriginGuard }, { provide: APP_GUARD, useClass: SessionGuard }, { provide: APP_FILTER, useClass: HttpExceptionFilter },
-] })
+@Module({
+  imports: [
+    AuthModule,
+    InvitationsModule,
+    PrismaModule,
+    HealthModule,
+    GroupsModule,
+    AlbumsModule,
+    PhotosModule,
+    AdminModule,
+  ],
+  controllers: [PrivateApiController],
+  providers: [
+    { provide: APP_GUARD, useClass: OriginGuard },
+    { provide: APP_GUARD, useClass: SessionGuard },
+    { provide: APP_FILTER, useClass: HttpExceptionFilter },
+  ],
+})
 export class AppModule {}

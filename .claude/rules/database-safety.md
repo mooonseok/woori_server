@@ -1,9 +1,9 @@
 ---
 paths:
-  - "prisma/**"
-  - "scripts/**"
-  - "src/**"
-  - "integration/**"
+  - 'prisma/**'
+  - 'scripts/**'
+  - 'src/**'
+  - 'integration/**'
 ---
 
 런타임 DB 역할과 migration 역할을 분리한다. 적용한 migration 수정 대신 후속 migration을 추가한다.

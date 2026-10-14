@@ -14,27 +14,12 @@
     "sourceMap": true,
     "baseUrl": ".",
     "paths": {
-      "@App/*": [
-        "src/*"
-      ],
-      "@Domain/*": [
-        "src/domain/*"
-      ],
-      "@Common/*": [
-        "src/common/*"
-      ],
-      "@Admin/*": [
-        "src/admin/*"
-      ]
+      "@App/*": ["src/*"],
+      "@Domain/*": ["src/domain/*"],
+      "@Common/*": ["src/common/*"],
+      "@Admin/*": ["src/admin/*"]
     }
   },
-  "include": [
-    "src/**/*.ts",
-    "test/**/*.ts",
-    "integration/**/*.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist"
-  ]
+  "include": ["src/**/*.ts", "test/**/*.ts", "integration/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
 }

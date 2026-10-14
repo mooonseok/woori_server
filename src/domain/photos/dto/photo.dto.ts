@@ -1,4 +1,4 @@
-import { Type } from "class-transformer";
+import { Type } from 'class-transformer';
 import {
   IsIn,
   IsInt,
@@ -8,7 +8,7 @@ import {
   Length,
   Max,
   Min,
-} from "class-validator";
+} from 'class-validator';
 export class AlbumParamsDto {
   @IsUUID() groupId!: string;
   @IsUUID() albumId!: string;
@@ -18,7 +18,7 @@ export class PhotoParamsDto extends AlbumParamsDto {
 }
 export class UploadPhotoDto {
   @IsString() @Length(1, 255) filename!: string;
-  @IsIn(["image/jpeg", "image/png", "image/webp"]) contentType!: string;
+  @IsIn(['image/jpeg', 'image/png', 'image/webp']) contentType!: string;
   @IsInt() @Min(1) @Max(30 * 1024 * 1024) bytes!: number;
 }
 export class PhotoListDto {
@@ -26,6 +26,6 @@ export class PhotoListDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(50) limit = 30;
 }
 export class PhotoContentDto {
-  @IsOptional() @IsIn(["original", "display", "thumbnail"]) variant:
-    "original" | "display" | "thumbnail" = "display";
+  @IsOptional() @IsIn(['original', 'display', 'thumbnail']) variant:
+    'original' | 'display' | 'thumbnail' = 'display';
 }

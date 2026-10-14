@@ -1,4 +1,4 @@
 onlyBuiltDependencies:
-  - "@nestjs/core"
-  - "@prisma/engines"
+  - '@nestjs/core'
+  - '@prisma/engines'
   - prisma

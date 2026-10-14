@@ -5,5 +5,10 @@ import { AuthService } from './auth.service';
 import { AuthRepository } from './auth.repository';
 import { AuthRateLimitService } from './auth-rate-limit.service';
 import { MailService } from './mail.service';
-@Module({ imports: [PrismaModule], controllers: [AuthController], providers: [AuthService, AuthRepository, AuthRateLimitService, MailService], exports: [AuthService, AuthRateLimitService] })
+@Module({
+  imports: [PrismaModule],
+  controllers: [AuthController],
+  providers: [AuthService, AuthRepository, AuthRateLimitService, MailService],
+  exports: [AuthService, AuthRateLimitService],
+})
 export class AuthModule {}

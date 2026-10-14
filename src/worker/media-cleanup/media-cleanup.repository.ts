@@ -2,7 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../common/modules/prisma/prisma.service';
 
-export interface CleanupClaim { id: string; photoId: string; objectKeys: string[]; attempts: number; lockToken: string }
+export interface CleanupClaim {
+  id: string;
+  photoId: string;
+  objectKeys: string[];
+  attempts: number;
+  lockToken: string;
+}
 @Injectable()
 export class MediaCleanupRepository {
   constructor(private readonly prisma: PrismaService) {}
