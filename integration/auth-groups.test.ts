@@ -2009,7 +2009,7 @@ test('real PostgreSQL: authentication, private groups and single-use invitation 
           }
         );
         await notifications.test(
-          'runtime role can persist inbox data without hard-delete, truncate or push endpoint access',
+          'runtime role can persist inbox data without hard-delete or truncate; push endpoints remain server-only',
           async () => {
             const runtime = new Pool({
               connectionString: requireIsolatedDatabase('DATABASE_URL'),
@@ -2036,7 +2036,7 @@ test('real PostgreSQL: authentication, private groups and single-use invitation 
               const endpoints = await runtime.query(
                 "SELECT has_table_privilege(current_user, 'woori.push_installations', 'SELECT') AS access"
               );
-              assert.equal(endpoints.rows[0].access, false);
+              assert.equal(endpoints.rows[0].access, true);
             } finally {
               await runtime.end();
             }

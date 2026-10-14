@@ -1,7 +1,8 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile, chmod } from 'node:fs/promises';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { join } from 'node:path';
+import { developmentMailDirectory } from '../../common/configurations/development-mail';
 @Injectable()
 export class MailService {
   async sendVerification(email: string, token: string): Promise<void> {
@@ -24,11 +25,8 @@ export class MailService {
       process.env.MAIL_MODE === 'file' &&
       process.env.NODE_ENV !== 'production'
     ) {
-      const directory = process.env.DEV_MAIL_DIR;
-      const outside = directory
-        ? relative(process.cwd(), resolve(directory))
-        : '';
-      if (!directory || !isAbsolute(directory) || !outside.startsWith('..'))
+      const directory = developmentMailDirectory();
+      if (!directory)
         throw new ServiceUnavailableException({ code: 'MAIL_NOT_CONFIGURED' });
       await mkdir(directory, { recursive: true, mode: 0o700 });
       await chmod(directory, 0o700);

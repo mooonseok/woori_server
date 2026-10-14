@@ -7,6 +7,7 @@ import {
 import { MediaStorageService } from '../../common/media/media-storage.service';
 import { Public } from '../../common/decorators/public.decorator';
 import { PrismaService } from '../../common/modules/prisma/prisma.service';
+import { developmentMailDirectory } from '../../common/configurations/development-mail';
 @Controller()
 export class HealthController {
   constructor(
@@ -32,9 +33,7 @@ export class HealthController {
       // Checks the schema and restricted runtime role as well as connectivity.
       await this.prisma.client.user.findFirst({ select: { id: true } });
       const mailConfigured =
-        (process.env.MAIL_MODE === 'file' &&
-          process.env.NODE_ENV !== 'production' &&
-          process.env.DEV_MAIL_DIR) ||
+        developmentMailDirectory() ||
         (process.env.MAIL_MODE === 'resend' &&
           process.env.RESEND_API_KEY &&
           process.env.MAIL_FROM);

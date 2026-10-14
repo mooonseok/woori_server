@@ -122,6 +122,8 @@ model Session {
   revokedAt DateTime? @db.Timestamptz(6)
   user      User      @relation(fields: [userId], references: [id], onDelete: Restrict)
 
+  installations PushInstallation[]
+
   @@index([userId, expiresAt])
   @@map("sessions")
   @@schema("woori")
@@ -336,6 +338,11 @@ model PushInstallation {
   id                 String                 @id @default(uuid()) @db.Uuid
   userId             String                 @db.Uuid
   provider           String                 @db.VarChar(16)
+  sessionId          String?                @db.Uuid
+  session            Session?               @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  bindingVersion     Int                    @default(1)
+  boundAt            DateTime               @default(now()) @db.Timestamptz(6)
+  expiresAt          DateTime?              @db.Timestamptz(6)
   endpointCiphertext String
   endpointHash       String                 @unique @db.VarChar(128)
   enabled            Boolean                @default(true)
@@ -343,6 +350,7 @@ model PushInstallation {
   user               User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
   deliveries         NotificationDelivery[]
 
+  @@index([sessionId])
   @@map("push_installations")
   @@schema("woori")
 }
@@ -356,6 +364,9 @@ model NotificationDelivery {
   attempts       Int              @default(0)
   nextAttemptAt  DateTime         @default(now()) @db.Timestamptz(6)
   leaseUntil     DateTime?        @db.Timestamptz(6)
+  bindingVersion Int              @default(1)
+  leaseToken     String?          @db.Uuid
+  resultCode     String?          @db.VarChar(48)
   notification   Notification     @relation(fields: [notificationId], references: [id], onDelete: Restrict)
   installation   PushInstallation @relation(fields: [installationId], references: [id], onDelete: Restrict)
 

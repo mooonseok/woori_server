@@ -44,11 +44,20 @@ export async function recordPhotoActivity(
       where: { recipientId_dedupeKey: { recipientId, dedupeKey: eventKey } },
       select: { id: true },
     });
-    await tx.notificationActivity.createMany({
+    const activity = await tx.notificationActivity.createMany({
       data: [
         { notificationId: notification.id, actorId, sequence: 1, eventKey },
       ],
       skipDuplicates: true,
     });
+    if (activity.count)
+      await tx.outboxEvent.create({
+        data: {
+          eventKey: `push:${notification.id}:1`,
+          type: 'NOTIFICATION_PUSH',
+          aggregateId: notification.id,
+          payload: { sequence: 1 },
+        },
+      });
   }
 }

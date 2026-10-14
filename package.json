@@ -28,7 +28,8 @@
     "policy:quality": "node scripts/policy/gate.mjs quality",
     "policy:ci": "node scripts/policy/gate.mjs ci",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "push:keys": "node scripts/generate-web-push-env.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1151.0",
@@ -43,7 +44,8 @@
     "pg": "8.16.3",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
-    "sharp": "0.35.5"
+    "sharp": "0.35.5",
+    "web-push": "3.6.7"
   },
   "devDependencies": {
     "@nestjs/cli": "11.0.12",
@@ -52,9 +54,10 @@
     "@types/node": "24.19.2",
     "@types/pg": "8.15.6",
     "@types/supertest": "6.0.3",
+    "@types/web-push": "3.6.4",
+    "prettier": "3.9.10",
     "prisma": "7.0.0",
     "supertest": "7.1.4",
-    "typescript": "5.9.3",
-    "prettier": "3.9.10"
+    "typescript": "5.9.3"
   }
 }

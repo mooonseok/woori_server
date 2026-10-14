@@ -37,7 +37,7 @@ export function validateQuietPreferences(p: {
       message: '방해 금지 시작과 종료 시간을 다르게 설정해 주세요.',
     });
 }
-function visible(userId: string) {
+export function visible(userId: string) {
   return Prisma.sql`SELECT n.id,n.kind,n."groupId",g.name AS "groupName",p."albumId",a.title AS "albumTitle",p.id AS "photoId",c.id AS "commentId",n."createdAt",n."readThroughSequence",act.sequence AS "latestSequence",u.id AS "actorId",u."displayName" AS "actorName"
     FROM woori.notifications n
     JOIN woori.groups g ON g.id=n."groupId" AND g.status='ACTIVE'
@@ -52,7 +52,7 @@ function visible(userId: string) {
       AND n.kind IN ('PHOTOS','COMMENT','PIN','REACTION')
       AND (n.kind<>'REACTION' OR EXISTS(SELECT 1 FROM woori.reactions r WHERE r."photoId"=p.id AND r."userId"=act."actorId"))`;
 }
-type InboxRow = {
+export type InboxRow = {
   id: string;
   kind: string;
   groupId: string;
@@ -124,8 +124,8 @@ export class NotificationsRepository {
       Prisma.sql`WITH visible AS (${visible(userId)}) SELECT * FROM visible WHERE id=${id}::uuid`
     );
     if (!rows.length) notificationNotFound();
-    const { groupId, albumId, photoId, commentId } = rows[0];
-    return { groupId, albumId, photoId, commentId };
+    const { groupId, albumId, photoId, commentId, latestSequence } = rows[0];
+    return { groupId, albumId, photoId, commentId, latestSequence };
   }
   async read(userId: string, items: ObservedNotificationDto[]) {
     const ids = [...new Set(items.map((i) => i.id))];

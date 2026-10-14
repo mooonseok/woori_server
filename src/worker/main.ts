@@ -1,10 +1,13 @@
 import 'reflect-metadata';
+import { PushDispatchService } from './push/push-dispatch.service';
 import { NestFactory } from '@nestjs/core';
 import { WorkerModule } from './worker.module';
+import { startupFailure } from '../common/configurations/startup-diagnostics';
 import { MediaCleanupService } from './media-cleanup/media-cleanup.service';
 async function main() {
   const app = await NestFactory.createApplicationContext(WorkerModule, {
     logger: false,
+    abortOnError: false,
   });
   if (process.argv.includes('--check')) {
     // Construction only: never connects to DB/R2 in the bootstrap check.
@@ -19,14 +22,30 @@ async function main() {
     return;
   }
   const cleanup = app.get(MediaCleanupService);
+  const push = app.get(PushDispatchService);
+  const runPass = async () => {
+    const results = await Promise.allSettled([
+      cleanup.runBatch(),
+      push.runBatch(),
+    ]);
+    for (const [index, result] of results.entries()) {
+      const job = index === 0 ? 'media-cleanup' : 'web-push';
+      if (result.status === 'fulfilled') {
+        if (
+          Object.values(result.value).some(
+            (count) => typeof count === 'number' && count > 0
+          )
+        )
+          console.log(
+            JSON.stringify({ service: 'woori-worker', job, ...result.value })
+          );
+      } else console.error(`Worker ${job} pass failed; it will be retried.`);
+    }
+    return results.every((result) => result.status === 'fulfilled');
+  };
   if (process.argv.includes('--once')) {
     try {
-      console.log(
-        JSON.stringify({
-          service: 'woori-worker',
-          ...(await cleanup.runBatch()),
-        })
-      );
+      if (!(await runPass())) process.exitCode = 1;
     } finally {
       await app.close();
     }
@@ -37,11 +56,7 @@ async function main() {
   let inFlight: Promise<void> | undefined;
   const poll = async () => {
     try {
-      const result = await cleanup.runBatch();
-      if (result.completed || result.retried)
-        console.log(JSON.stringify({ service: 'woori-worker', ...result }));
-    } catch {
-      console.error('Media cleanup pass failed; it will be retried.');
+      await runPass();
     } finally {
       if (!closing)
         timer = setTimeout(() => {
@@ -67,7 +82,7 @@ async function main() {
   );
   inFlight = poll();
 }
-void main().catch(() => {
-  console.error('Worker bootstrap failed; check non-secret configuration.');
+void main().catch((error: unknown) => {
+  console.error(`Worker bootstrap failed: ${startupFailure(error)}`);
   process.exitCode = 1;
 });
