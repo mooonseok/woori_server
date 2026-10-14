@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Param,
@@ -43,6 +44,10 @@ export class PhotosController {
   ) {
     return this.service.complete(p.groupId, p.albumId, p.photoId, u.id);
   }
+  @Delete("photos/:photoId") @HttpCode(204) remove(
+    @Param() p: PhotoParamsDto,
+    @CurrentUser() u: SessionUser,
+  ) { return this.service.remove(p.groupId, p.albumId, p.photoId, u.id); }
   @Get("photos/:photoId/content") async content(
     @Param() p: PhotoParamsDto,
     @Query() q: PhotoContentDto,
@@ -64,7 +69,7 @@ export class PhotosController {
       length: object.byteSize,
       disposition:
         q.variant === "original"
-          ? 'attachment; filename="woori-photo"'
+          ? `attachment; filename="woori-${p.photoId}.${object.contentType === "image/jpeg" ? "jpg" : object.contentType === "image/png" ? "png" : "webp"}"`
           : "inline",
     });
   }

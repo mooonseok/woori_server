@@ -24,6 +24,7 @@ function fixture(
     }),
     finish,
     release,
+    queueDeletedAttempt: async () => undefined,
   } as unknown as PhotosRepository;
   const storage = {
     enabled: () => true,

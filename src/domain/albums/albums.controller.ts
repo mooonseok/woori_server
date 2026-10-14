@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { AlbumParamsDto } from "../photos/dto/photo.dto";
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post } from "@nestjs/common";
 import { CreateAlbumDto } from "./dto/create-album.dto";
 import { AlbumsService } from "./albums.service";
 import { GroupParamsDto } from "./dto/group-params.dto";
@@ -20,4 +21,14 @@ export class AlbumsController {
   ) {
     return this.service.list(params.groupId, user.id);
   }
+  @Patch(":albumId") rename(
+    @Param() params: AlbumParamsDto,
+    @Body() dto: CreateAlbumDto,
+    @CurrentUser() user: SessionUser,
+  ) { return this.service.rename(params.groupId, params.albumId, user.id, dto.title); }
+  @Delete(":albumId") @HttpCode(204) remove(
+    @Param() params: AlbumParamsDto,
+    @CurrentUser() user: SessionUser,
+  ) { return this.service.remove(params.groupId, params.albumId, user.id); }
+
 }

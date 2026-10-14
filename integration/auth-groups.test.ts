@@ -1,3 +1,6 @@
+import { MediaCleanupRepository } from "../src/worker/media-cleanup/media-cleanup.repository";
+import { MediaCleanupService } from "../src/worker/media-cleanup/media-cleanup.service";
+import { PrismaService } from "../src/common/modules/prisma/prisma.service";
 import "reflect-metadata";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -311,6 +314,134 @@ test("real PostgreSQL: authentication, private groups and single-use invitation 
         assert.equal(denied.body.code, "GROUP_JOIN_NOT_ALLOWED");
       },
     );
+    await t.test("album/photo management checks owner/uploader, fences deletion and retries durable cleanup", async () => {
+      const storage = app.get(MediaStorageService);
+      const repository = app.get(PhotosRepository);
+      const objects = new Map<string, Buffer>();
+      let processingGate: (() => Promise<void>) | undefined;
+      Object.assign(storage, {
+        enabled: () => true,
+        presign: async (key: string, mime: string) => ({ uploadUrl: `https://upload.example.test/${key}`, headers: { "Content-Type": mime }, expiresAt: new Date(Date.now() + 600_000) }),
+        process: async (_key: string, _mime: string, _bytes: number, prefix: string): Promise<MediaVariant[]> => {
+          if (processingGate) await processingGate();
+          return (["ORIGINAL", "DISPLAY", "THUMBNAIL"] as const).map((kind) => {
+            const objectKey = `${prefix}/${kind === "ORIGINAL" ? "original.png" : kind === "DISPLAY" ? "display.webp" : "thumbnail.webp"}`;
+            objects.set(objectKey, Buffer.from("image"));
+            return { kind, objectKey, mime: kind === "ORIGINAL" ? "image/png" : "image/webp", width: 1, height: 1, bytes: 5 };
+          });
+        },
+        read: async (key: string) => ({ body: Readable.from(objects.get(key)!), contentType: "image/png", byteSize: objects.get(key)!.length }),
+        cleanup: async (keys: string[]) => { for (const key of keys) objects.delete(key); },
+      });
+      const group = (await mutation(owner.agent.post("/v1/groups")).send({ name: "관리 검증" }).expect(201)).body.group.id;
+      await admin.query('INSERT INTO woori.memberships ("groupId","userId",role,status) VALUES ($1,$2,\'MEMBER\',\'ACTIVE\')', [group, winner.id]);
+      const base = `/v1/groups/${group}/albums`;
+      const create = async () => (await mutation(owner.agent.post(base)).send({ title: "관리할 앨범" }).expect(201)).body.album;
+      const a = await create();
+      assert.equal(a.canManage, true);
+      assert.equal((await winner.agent.get(base).expect(200)).body.albums[0].canManage, false);
+      const path = `${base}/${a.id}`;
+      await mutation(winner.agent.patch(path)).send({ title: "금지" }).expect(404);
+      await mutation(winner.agent.delete(path)).expect(404);
+      await mutation(loser.agent.patch(path)).send({ title: "금지" }).expect(404);
+      await mutation(owner.agent.patch(path)).send({ title: " " }).expect(400);
+      await mutation(owner.agent.patch(path)).send({ title: "a".repeat(161) }).expect(400);
+      const renamed = (await mutation(owner.agent.patch(path)).send({ title: "  바뀐 제목  " }).expect(200)).body.album;
+      assert.equal(renamed.title, "바뀐 제목"); assert.equal(renamed.canManage, true);
+      const ticket = async (account: Account, albumPath = path) => {
+        const result = (await mutation(account.agent.post(`${albumPath}/uploads`)).send({ filename: "image.png", contentType: "image/png", bytes: 5 }).expect(201)).body;
+        objects.set(new URL(result.uploadUrl).pathname.slice(1), Buffer.from("image"));
+        return result.photoId as string;
+      };
+      const upload = async (account: Account, albumPath = path) => {
+        const id = await ticket(account, albumPath);
+        const photo = (await mutation(account.agent.post(`${albumPath}/photos/${id}/complete`)).expect(200)).body.photo;
+        assert.equal(photo.canDelete, true); assert.equal(photo.uploaderId, undefined);
+        return id;
+      };
+      const owned = await upload(owner); const memberPhoto = await upload(winner);
+      const memberList = (await winner.agent.get(`${path}/photos`).expect(200)).body.photos;
+      assert.equal(memberList.find((p: { id: string }) => p.id === owned).canDelete, false);
+      assert.equal(memberList.find((p: { id: string }) => p.id === memberPhoto).canDelete, true);
+      const content = `${path}/photos/${owned}/content?variant=original`;
+      const original = await winner.agent.get(content).expect(200);
+      assert.match(original.headers["content-disposition"], /attachment; filename="woori-.*\.png"/);
+      assert.equal(original.headers["cache-control"], "private, no-store");
+      await api.get(content).expect(401); await loser.agent.get(content).expect(404);
+      await mutation(winner.agent.delete(`${path}/photos/${owned}`)).expect(404);
+      await mutation(loser.agent.delete(`${path}/photos/${memberPhoto}`)).expect(404);
+      await mutation(owner.agent.delete(`/v1/groups/${groupId}/albums/${a.id}/photos/${owned}`)).expect(404);
+      await admin.query('UPDATE woori.memberships SET status=\'REMOVED\' WHERE "groupId"=$1 AND "userId"=$2', [group, winner.id]);
+      await winner.agent.get(content).expect(404);
+      await mutation(winner.agent.delete(`${path}/photos/${memberPhoto}`)).expect(404);
+      await mutation(winner.agent.patch(path)).send({ title: "차단" }).expect(404);
+      await mutation(winner.agent.delete(path)).expect(404);
+      await admin.query('UPDATE woori.memberships SET status=\'ACTIVE\' WHERE "groupId"=$1 AND "userId"=$2', [group, winner.id]);
+      await Promise.all([mutation(winner.agent.delete(`${path}/photos/${memberPhoto}`)).expect(204), mutation(owner.agent.delete(`${path}/photos/${memberPhoto}`)).expect(204)]);
+      assert.equal((await admin.query('SELECT "usedBytes" FROM woori.groups WHERE id=$1', [group])).rows[0].usedBytes, "15");
+      await owner.agent.get(`${path}/photos/${memberPhoto}/content`).expect(404);
+      assert.equal((await owner.agent.get(`${path}/photos`).expect(200)).body.photos.length, 1);
+      assert.equal((await owner.agent.get(base).expect(200)).body.albums[0].coverPhotoId, owned);
+      // Deletion during a storage read destroys the pending response body.
+      const normalRead = storage.read.bind(storage); let interruptedBody: Readable | undefined;
+      storage.read = async (...args: Parameters<typeof storage.read>) => {
+        const read = await normalRead(...args); interruptedBody = read.body;
+        await repository.remove(group, a.id, owned, owner.id); return read;
+      };
+      await owner.agent.get(content).expect(404); assert.equal(interruptedBody?.destroyed, true); storage.read = normalRead;
+      // Delete a processing photo while its image transform is suspended.
+      const pending = await ticket(winner);
+      let entered!: () => void; const started = new Promise<void>((r) => { entered = r; });
+      let resume!: () => void; const gate = new Promise<void>((r) => { resume = r; });
+      processingGate = async () => { entered(); await gate; };
+      const finishing = mutation(winner.agent.post(`${path}/photos/${pending}/complete`)).then((r) => r);
+      await started;
+      await mutation(owner.agent.delete(`${path}/photos/${pending}`)).expect(204);
+      resume(); assert.equal((await finishing).status, 409); processingGate = undefined;
+      await owner.agent.get(`${path}/photos/${pending}/content`).expect(404);
+      const deleted = (await admin.query('SELECT "reservedBytes",status FROM woori.photos WHERE id=$1', [pending])).rows[0];
+      assert.equal(deleted.reservedBytes, "0"); assert.equal(deleted.status, "DELETING");
+      assert.equal((await admin.query('SELECT "objectKeys" FROM woori.media_cleanup_jobs WHERE "photoId"=$1', [pending])).rows[0].objectKeys.length, 4);
+      // Album deletion races one photo delete; READY quota and jobs remain single-counted.
+      const b = await create(); const bp = `${base}/${b.id}`;
+      const toDelete = await upload(winner, bp); const unfinished = await ticket(winner, bp);
+      const race = await Promise.all([mutation(owner.agent.delete(bp)), mutation(winner.agent.delete(`${bp}/photos/${toDelete}`))]);
+      assert.equal(race[0].status, 204); assert.ok([204, 404].includes(race[1].status));
+      await mutation(owner.agent.delete(bp)).expect(204);
+      await mutation(owner.agent.patch(bp)).send({ title: "복원 불가" }).expect(404);
+      await mutation(winner.agent.post(`${bp}/photos/${unfinished}/complete`)).expect(404);
+      await mutation(winner.agent.post(`${bp}/uploads`)).send({ filename: "x.png", contentType: "image/png", bytes: 5 }).expect(404);
+      await owner.agent.get(`${bp}/photos`).expect(404);
+      assert.equal((await admin.query('SELECT "usedBytes" FROM woori.groups WHERE id=$1', [group])).rows[0].usedBytes, "0");
+      const jobs = (await admin.query('SELECT j.* FROM woori.media_cleanup_jobs j JOIN woori.photos p ON p.id=j."photoId" WHERE p."groupId"=$1', [group])).rows;
+      assert.equal(jobs.length, 5);
+      assert.ok(jobs.every((j) => j.availableAt > new Date()));
+      const cleanupRepository = new MediaCleanupRepository(app.get(PrismaService));
+      let failCleanup = true;
+      storage.removePhotoObjects = async (photoId: string, keys: string[]) => {
+        if (failCleanup) throw new Error("temporary storage outage");
+        for (const key of objects.keys()) if (key.startsWith(`photos/${photoId}/`) || keys.includes(key)) objects.delete(key);
+      };
+      const cleanup = new MediaCleanupService(cleanupRepository, storage);
+      assert.deepEqual(await cleanup.runBatch(), { completed: 0, retried: 0 }, "Unexpired signed PUT jobs must wait");
+      await admin.query('UPDATE woori.media_cleanup_jobs SET "availableAt"=now()-interval \'1 second\'');
+      assert.deepEqual(await cleanup.runBatch(), { completed: 0, retried: 5 });
+      failCleanup = false;
+      await admin.query('UPDATE woori.media_cleanup_jobs SET "availableAt"=now()-interval \'1 second\'');
+      const cleaned = await Promise.all([cleanup.runBatch(), cleanup.runBatch()]);
+      assert.equal(cleaned.reduce((sum, result) => sum + result.completed, 0), 5);
+      assert.equal(objects.size, 0);
+      assert.equal((await admin.query('SELECT count(*)::int AS count FROM woori.photos WHERE "groupId"=$1 AND status=\'DELETED\'', [group])).rows[0].count, 5);
+      const finishedJobs = (await admin.query('SELECT "completedAt",attempts FROM woori.media_cleanup_jobs')).rows;
+      assert.ok(finishedJobs.every((j) => j.completedAt && j.attempts === 2));
+      // A late storage completion reopens a completed job and invalidates old leases.
+      const lateKey = `photos/${pending}/00000000-0000-4000-8000-000000000001/display.webp`;
+      objects.set(lateKey, Buffer.from("late"));
+      await repository.queueDeletedAttempt(pending, [lateKey]);
+      assert.equal((await admin.query('SELECT status FROM woori.photos WHERE id=$1', [pending])).rows[0].status, "DELETING");
+      assert.deepEqual(await cleanup.runBatch(), { completed: 1, retried: 0 });
+      assert.equal(objects.size, 0);
+    });
     await t.test(
       "albums and media enforce current membership, quotas, completion fencing and private reads",
       async () => {

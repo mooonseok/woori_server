@@ -424,3 +424,20 @@ model Invitation {
   @@map("invitations")
   @@schema("woori")
 }
+
+model MediaCleanupJob {
+  id          String    @id @default(uuid()) @db.Uuid
+  photoId     String    @unique @db.Uuid
+  objectKeys  String[]
+  availableAt DateTime  @db.Timestamptz(6)
+  attempts    Int       @default(0)
+  lockedUntil DateTime? @db.Timestamptz(6)
+  lockToken   String?   @db.Uuid
+  completedAt DateTime? @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
+
+  @@index([completedAt, availableAt, lockedUntil])
+  @@map("media_cleanup_jobs")
+  @@schema("woori")
+}

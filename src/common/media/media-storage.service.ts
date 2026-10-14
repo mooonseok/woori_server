@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, OnModuleDestroy, Optional, ServiceUnavailableException } from '@nestjs/common';
-import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Readable } from 'node:stream';
 import sharp, { OutputInfo } from 'sharp';
@@ -149,6 +149,43 @@ export class MediaStorageService implements OnModuleDestroy {
     if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > MAX_UPLOAD_BYTES) throw uploadInvalid();
     const { data, contentType } = await this.download(objectKey, maxBytes);
     return { body: Readable.from([data]), contentType, byteSize: data.length };
+  }
+  /** Durable deletion never swallows provider errors or accepts a bucket-wide prefix. */
+  async removePhotoObjects(photoId: string, objectKeys: string[]): Promise<void> {
+    const uuid = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+    if (!new RegExp(`^${uuid}$`).test(photoId)) throw uploadInvalid();
+    const prefix = `photos/${photoId}/`;
+    const allowed = new RegExp(`^(?:staging/${uuid}|photos/${photoId}/${uuid}/(?:original\\.(?:jpg|png|webp)|display\\.webp|thumbnail\\.webp))$`);
+    if (!objectKeys.every((key) => allowed.test(key))) throw uploadInvalid();
+    const listed = await this.listPhotoKeys(prefix);
+    if (!listed.every((key) => allowed.test(key))) throw uploadInvalid();
+    const keys = [...new Set([...objectKeys, ...listed])];
+    // A bounded batch avoids overwhelming R2 while keeping work inside the job lease.
+    for (let offset = 0; offset < keys.length; offset += 10) {
+      await Promise.all(keys.slice(offset, offset + 10).map((key) => this.removeAndConfirm(key)));
+    }
+    // More than one page (or a concurrent late attempt) stays pending for another pass.
+    if ((await this.listPhotoKeys(prefix)).length) throw unavailable();
+  }
+  protected async listPhotoKeys(prefix: string): Promise<string[]> {
+    try {
+      const response = await this.sdk().send(new ListObjectsV2Command({
+        Bucket: this.options.bucket, Prefix: prefix, MaxKeys: 200,
+      }), { abortSignal: AbortSignal.timeout(5000) });
+      return (response.Contents ?? []).map((object) => object.Key!).filter(Boolean);
+    } catch { throw unavailable(); }
+  }
+  protected async removeAndConfirm(key: string): Promise<void> {
+    try {
+      await this.sdk().send(new DeleteObjectCommand({ Bucket: this.options.bucket, Key: key }), { abortSignal: AbortSignal.timeout(5000) });
+      try {
+        await this.sdk().send(new HeadObjectCommand({ Bucket: this.options.bucket, Key: key }), { abortSignal: AbortSignal.timeout(5000) });
+      } catch (error) {
+        if ((error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode === 404) return;
+        throw unavailable();
+      }
+      throw unavailable();
+    } catch { throw unavailable(); }
   }
   async cleanup(keys: string[]): Promise<void> {
     if (!keys.length || !this.enabled()) return;

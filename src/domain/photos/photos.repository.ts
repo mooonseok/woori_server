@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { markPhotosDeleted } from "./photo-deletion";
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../common/modules/prisma/prisma.service";
@@ -13,6 +14,7 @@ export const photoSummary = {
   id: true,
   groupId: true,
   albumId: true,
+  uploaderId: true,
   width: true,
   height: true,
   capturedAt: true,
@@ -120,7 +122,12 @@ export class PhotosRepository {
     });
     const hasNext = photos.length > limit;
     if (hasNext) photos.pop();
-    return { photos, nextCursor: hasNext ? photos.at(-1)!.id : null };
+    const membership = await this.prisma.client.membership.findFirst({
+      where: { groupId, userId, status: "ACTIVE", user: { status: "ACTIVE" }, group: { status: "ACTIVE" } },
+      select: { role: true },
+    });
+    if (!membership) notFound();
+    return { photos: photos.map((photo) => this.summary(photo, membership.role === "OWNER" || photo.uploaderId === userId)), nextCursor: hasNext ? photos.at(-1)!.id : null };
   }
   async reserve(
     groupId: string,
@@ -134,6 +141,7 @@ export class PhotosRepository {
       const now = new Date();
       const active = {
         groupId,
+        deletedAt: null,
         OR: [
           { status: "PENDING" as const, uploadExpiresAt: { gt: now } },
           {
@@ -246,6 +254,7 @@ export class PhotosRepository {
           albumId,
           uploaderId: userId,
           status: "PROCESSING",
+          deletedAt: null,
           processingToken: token,
           processingUntil: { gt: new Date() },
         },
@@ -284,7 +293,7 @@ export class PhotosRepository {
           reservedBytes: 0n,
           processingToken: null,
           processingUntil: null,
-          stagingKey: null,
+          // Retain the private staging key for deletion after signed PUT expiry.
         },
         select: photoSummary,
       });
@@ -292,13 +301,14 @@ export class PhotosRepository {
         where: { id: groupId },
         data: { usedBytes: { increment: bytes } },
       });
-      return result;
+      return this.summary(result, true);
     });
   }
   async release(photoId: string, token: string | undefined, failed: boolean) {
     const result = await this.prisma.client.photo.updateMany({
       where: {
         id: photoId,
+        deletedAt: null,
         ...(token
           ? { status: "PROCESSING", processingToken: token }
           : { status: "PENDING" }),
@@ -340,6 +350,34 @@ export class PhotosRepository {
     if (!variant) notFound();
     return variant;
   }
+
+  async remove(groupId: string, albumId: string, photoId: string, userId: string) {
+    await this.prisma.client.$transaction(async (tx) => {
+      await this.lockAlbum(tx, groupId, albumId, userId);
+      const membership = await tx.membership.findUnique({ where: { groupId_userId: { groupId, userId } }, select: { role: true } });
+      const photo = await tx.photo.findFirst({ where: { id: photoId, albumId, groupId } });
+      if (!photo || (photo.uploaderId !== userId && membership?.role !== "OWNER")) notFound();
+      if (photo.deletedAt) return;
+      await markPhotosDeleted(tx, groupId, { albumId, id: photoId });
+    });
+  }
+  async queueDeletedAttempt(photoId: string, keys: string[]) {
+    // If deletion won publication, a delayed process may have written after the
+    // worker's first sweep. Reset its lease and persist another exact-key sweep.
+    await this.prisma.client.$transaction(async (tx) => {
+      const photo = await tx.photo.findFirst({ where: { id: photoId, deletedAt: { not: null } }, select: { id: true } });
+      if (!photo) return;
+      await tx.$queryRaw`SELECT id FROM woori.media_cleanup_jobs WHERE "photoId"=${photoId}::uuid FOR UPDATE`;
+      const job = await tx.mediaCleanupJob.findUnique({ where: { photoId } });
+      if (!job) throw new Error("Deleted photo has no cleanup job");
+      await tx.mediaCleanupJob.update({ where: { photoId }, data: {
+        objectKeys: Array.from(new Set([...job.objectKeys, ...keys])),
+        completedAt: null, lockedUntil: null, lockToken: null,
+        availableAt: new Date(Math.max(Date.now(), job.availableAt.getTime())),
+      } });
+      await tx.photo.update({ where: { id: photoId }, data: { status: "DELETING" } });
+    });
+  }
   summary(photo: {
     id: string;
     groupId: string;
@@ -349,7 +387,7 @@ export class PhotosRepository {
     capturedAt: Date | null;
     createdAt: Date;
     status: string;
-  }) {
+  }, canDelete = true) {
     return {
       id: photo.id,
       groupId: photo.groupId,
@@ -359,6 +397,7 @@ export class PhotosRepository {
       capturedAt: photo.capturedAt,
       createdAt: photo.createdAt,
       status: photo.status,
+      canDelete,
     };
   }
 }

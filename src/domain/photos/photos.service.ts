@@ -109,12 +109,16 @@ export class PhotosService {
         invalid,
       );
       if (released) await this.storage.cleanup(keys).catch(() => undefined);
+      else await this.repository.queueDeletedAttempt(photoId, keys);
       if (invalid && released)
         await this.storage
           .cleanup([claim.photo.stagingKey!])
           .catch(() => undefined);
       throw error;
     }
+  }
+  remove(groupId: string, albumId: string, photoId: string, userId: string) {
+    return this.repository.remove(groupId, albumId, photoId, userId);
   }
   async content(
     groupId: string,

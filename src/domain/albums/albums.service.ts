@@ -22,8 +22,16 @@ export class AlbumsService {
           createdAt: album.createdAt,
           photoCount: album._count.photos,
           coverPhotoId: album.photos[0]?.id ?? null,
+          canManage: membership.role === "OWNER",
         }),
       ),
     };
   }
+  async rename(groupId: string, albumId: string, userId: string, title: string) {
+    return { album: await this.repository.rename(groupId, albumId, userId, title) };
+  }
+  remove(groupId: string, albumId: string, userId: string) {
+    return this.repository.remove(groupId, albumId, userId);
+  }
+
 }
