@@ -1,3 +1,4 @@
+import { NotificationsModule } from './domain/notifications/notifications.module';
 import { AuthModule } from './domain/auth/auth.module';
 import { InvitationsModule } from './domain/invitations/invitations.module';
 import { OriginGuard } from './common/guards/origin.guard';
@@ -21,6 +22,7 @@ import { PrivateApiController } from './domain/private-api.controller';
     GroupsModule,
     AlbumsModule,
     PhotosModule,
+    NotificationsModule,
     AdminModule,
   ],
   controllers: [PrivateApiController],
