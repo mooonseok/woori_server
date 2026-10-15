@@ -1,7 +1,7 @@
 {
   "name": "woori_server",
   "product": "우리",
-  "status": "account-recovery-and-profile",
+  "status": "group-lifecycle-management",
   "plans": "/Users/parkmoonseok/.Codex/projects/woori_server/plans",
   "sharedPlan": "/Users/parkmoonseok/.Codex/projects/woori/plans/00-product-plan.md",
   "implemented": [
@@ -31,7 +31,10 @@
     "opaque provider payload followed by authenticated display validation; generic lock-screen text by default",
     "actual Chrome Web Push receipt verified for two fixture accounts using real provider transport; account switch cleanup and revoked-membership deep-link denial verified",
     "Resend verification email received in Gmail and actual email link confirmed in Chrome; database verification and temporary account cleanup verified",
-    "name/email account recovery with generic responses and rate limits; hashed one-time 30-minute reset tokens with transactional session/push revocation and login-race fencing; current-user profile name update"
+    "name/email account recovery with generic responses and rate limits; hashed one-time 30-minute reset tokens with transactional session/push revocation and login-race fencing; current-user profile name update",
+    "active-member roster with minimal fields and bounded pagination; owner-scoped rename/removal/ownership transfer/deletion and member leave",
+    "group-first transactional locking across invitations, album writes and lifecycle changes; serializable raw SQL conflict retry",
+    "durable bounded group cleanup integrated with media worker, quota consistency, retry and late-publication reopening; real R2 group deletion verified with isolated synthetic fixture"
   ],
   "notImplemented": [
     "production Supabase/Railway/R2 provisioning and deployment",
@@ -88,5 +91,14 @@
     "pushKeySetup": "pnpm push:keys mailto:operator@example.com creates NEW gitignored .env.web-push.local mode0600; copy values privately to API/worker environment",
     "pushDelivery": "worker polls each10s; fanout up to20 and deliveries up to20 eachpass; notification24h expiry, provider TTL300s, five networkattempts, quietretry60s; provider acceptance does not prove device receipt"
   },
-  "localSetupPlan": "/Users/parkmoonseok/.Codex/projects/woori/plans/05-local-auth-setup.md"
+  "localSetupPlan": "/Users/parkmoonseok/.Codex/projects/woori/plans/05-local-auth-setup.md",
+  "groupManagement": {
+    "albumTitlePermission": "active group owner only",
+    "leaveAndRemoval": "retain contributed photos/comments/reactions; revoke group access immediately; LEFT may rejoin, REMOVED may not rejoin",
+    "ownershipTransfer": "one active owner; atomic role/ownerId change; revoke all previous invitations",
+    "deletion": "owner confirms exact current name; API 202 immediately hides group; independent worker batches 100 photos and 100 albums per pass, verified R2 cleanup before final DELETED",
+    "retention": "group/album/photo tombstones and comment metadata retained; this is not an account-data purge",
+    "cleanupDelay": "existing upload/processing expiry grace preserved; requires running API and separate worker",
+    "databaseChanges": "no new migration or runtime grants required"
+  }
 }

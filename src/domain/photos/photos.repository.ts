@@ -395,11 +395,22 @@ export class PhotosRepository {
     // If deletion won publication, a delayed process may have written after the
     // worker's first sweep. Reset its lease and persist another exact-key sweep.
     await this.prisma.client.$transaction(async (tx) => {
+      const initial = await tx.photo.findUnique({
+        where: { id: photoId },
+        select: { groupId: true },
+      });
+      if (!initial) return;
+      // Serialize late cleanup with group finalization, then recheck the tombstone.
+      await tx.$queryRaw`SELECT id FROM woori.groups WHERE id=${initial.groupId}::uuid FOR UPDATE`;
       const photo = await tx.photo.findFirst({
         where: { id: photoId, deletedAt: { not: null } },
         select: { id: true },
       });
       if (!photo) return;
+      await tx.group.updateMany({
+        where: { id: initial.groupId, status: 'DELETED' },
+        data: { status: 'DELETING' },
+      });
       await tx.$queryRaw`SELECT id FROM woori.media_cleanup_jobs WHERE "photoId"=${photoId}::uuid FOR UPDATE`;
       const job = await tx.mediaCleanupJob.findUnique({ where: { photoId } });
       if (!job) throw new Error('Deleted photo has no cleanup job');

@@ -6,11 +6,19 @@ import { Prisma } from '@prisma/client';
 export async function markPhotosDeleted(
   tx: Prisma.TransactionClient,
   groupId: string,
-  scope: { albumId: string; id?: string }
+  scope: { albumId?: string; id?: string } = {},
+  limit?: number
 ) {
+  if (
+    limit !== undefined &&
+    (!Number.isInteger(limit) || limit < 1 || limit > 100)
+  )
+    throw new Error('Invalid photo deletion batch size');
   const now = new Date();
   const photos = await tx.photo.findMany({
     where: { groupId, ...scope, deletedAt: null },
+    orderBy: { id: 'asc' },
+    ...(limit === undefined ? {} : { take: limit }),
     select: {
       id: true,
       status: true,
@@ -21,7 +29,7 @@ export async function markPhotosDeleted(
       variants: { select: { objectKey: true } },
     },
   });
-  if (!photos.length) return;
+  if (!photos.length) return 0;
   await tx.mediaCleanupJob.createMany({
     data: photos.map((photo) => ({
       id: randomUUID(),
@@ -51,7 +59,11 @@ export async function markPhotosDeleted(
     0n
   );
   await tx.photo.updateMany({
-    where: { groupId, ...scope, deletedAt: null },
+    where: {
+      groupId,
+      id: { in: photos.map((photo) => photo.id) },
+      deletedAt: null,
+    },
     data: {
       deletedAt: now,
       status: 'DELETING',
@@ -65,4 +77,5 @@ export async function markPhotosDeleted(
       where: { id: groupId },
       data: { usedBytes: { decrement: bytes } },
     });
+  return photos.length;
 }

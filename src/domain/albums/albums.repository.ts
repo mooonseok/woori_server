@@ -7,7 +7,8 @@ export class AlbumsRepository {
   constructor(private readonly prisma: PrismaService) {}
   async create(groupId: string, userId: string, title: string) {
     return this.prisma.client.$transaction(async (tx) => {
-      // A locked membership keeps removal from racing this write.
+      // Match the group-first order used by ownership/removal and upload publication.
+      await tx.$queryRaw`SELECT id FROM woori.groups WHERE id=${groupId}::uuid AND status='ACTIVE' FOR SHARE`;
       const rows = await tx.$queryRaw<
         { groupId: string; role: string }[]
       >`SELECT m."groupId",m.role FROM woori.memberships m JOIN woori.groups g ON g.id=m."groupId" JOIN woori.users u ON u.id=m."userId" WHERE m."groupId"=${groupId}::uuid AND m."userId"=${userId}::uuid AND m.status='ACTIVE' AND g.status='ACTIVE' AND u.status='ACTIVE' FOR SHARE OF m,g,u`;
