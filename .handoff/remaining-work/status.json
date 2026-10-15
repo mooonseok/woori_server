@@ -45,10 +45,23 @@
     {
       "id": "W03",
       "title": "촬영일·추억 홈",
-      "status": "pending",
-      "evidence": [],
-      "implementationRefs": [],
-      "peerEvidence": []
+      "status": "done",
+      "evidence": [
+        "2026-10-15: user confirmed manual > EXIF > upload date, fixed Korean UTC+09 calendar, owner/uploader edit, existing-photo EXIF backfill, personal hide/restore and no automatic memory push.",
+        "Server policy:quality passed: 18 policy, 62 unit, 59 isolated PostgreSQL integration tests. Client isolated-copy policy:quality passed: 16 policy, 71 functional, lint/typecheck/boundaries/format and web/admin production builds.",
+        "Actual private R2 synthetic JPEGs: EXIF two photos, missing EXIF upload fallback one photo. Backfill one simulated old photo preserved concurrent manual date; clearing manual restored EXIF. Today/month each selected correct distinct photo.",
+        "Chrome owner/member: exact memory photo opened; native date editing persisted and reset restored EXIF; Escape closed date editor only; hide/restore worked; owner hide did not affect member today/hidden list. 390px viewport had no horizontal overflow.",
+        "With explicit user approval, additive photo_memories migration and minimal runtime grants applied to 127.0.0.1:55439/woori_dev. Existing eligible backfill count 0, so no existing originals were read. Production DB not accessed.",
+        "All three synthetic R2 photo prefixes empty and staging absent after cleanup; group DELETED and usedBytes 0. Isolated fixture DB/mail/state removed. Normal local API restored. Implementation and evidence included in this commit; no push performed."
+      ],
+      "implementationRefs": [
+        "feature/photo-memories; implementation recorded in this W03 commit",
+        "project.json",
+        "src/domain/memories/memories.repository.ts"
+      ],
+      "peerEvidence": [
+        "Both repositories aligned with server contracts/openapi.json 0.9.0; API membership, date validation, cursor scoping, per-user hiding and backfill concurrency covered."
+      ]
     },
     {
       "id": "W04",
@@ -92,7 +105,7 @@
     }
   ],
   "pendingDecisions": [
-    "W03-W08: review corresponding DESIGN.md decisions before implementation."
+    "W04-W08: review corresponding DESIGN.md decisions before implementation."
   ],
   "durableDecisionsMoved": false,
   "permanentRefs": []

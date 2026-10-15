@@ -17,6 +17,7 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Readable } from 'node:stream';
 import sharp, { OutputInfo } from 'sharp';
+import { exifCapturedAt } from './photo-capture-date';
 
 export const MAX_UPLOAD_BYTES = 30 * 1024 * 1024;
 export const MAX_TOTAL_VARIANT_BYTES = 90 * 1024 * 1024;
@@ -29,6 +30,7 @@ export interface MediaStorageOptions {
   bucket?: string;
 }
 export interface MediaVariant {
+  capturedAt?: Date | null;
   kind: 'ORIGINAL' | 'DISPLAY' | 'THUMBNAIL';
   objectKey: string;
   mime: string;
@@ -215,6 +217,17 @@ export class MediaStorageService implements OnModuleDestroy {
       throw unavailable();
     }
   }
+  async captureDate(objectKey: string, bytes: number): Promise<Date | null> {
+    if (!Number.isSafeInteger(bytes) || bytes < 1 || bytes > MAX_UPLOAD_BYTES)
+      throw uploadInvalid();
+    this.validKey(objectKey, 'photos/');
+    const { data } = await this.download(objectKey, bytes);
+    if (data.length !== bytes) throw uploadInvalid();
+    const metadata = await sharp(data, {
+      limitInputPixels: MAX_IMAGE_PIXELS,
+    }).metadata();
+    return exifCapturedAt(metadata.exif);
+  }
   async process(
     stagingKey: string,
     expectedMime: string,
@@ -247,12 +260,14 @@ export class MediaStorageService implements OnModuleDestroy {
       let display: { data: Buffer; info: OutputInfo };
       let thumbnail: { data: Buffer; info: OutputInfo };
       let width: number, height: number, format: string;
+      let capturedAt: Date | null = null;
       try {
         const image = sharp(data, {
           limitInputPixels: MAX_IMAGE_PIXELS,
           failOn: 'warning',
         });
         const meta = await image.metadata();
+        capturedAt = exifCapturedAt(meta.exif);
         if (
           !meta.format ||
           mimeByFormat[meta.format] !== expectedMime ||
@@ -334,6 +349,7 @@ export class MediaStorageService implements OnModuleDestroy {
         await this.put(objectKey, object.data, object.mime);
         result.push({
           kind: object.kind,
+          ...(object.kind === 'ORIGINAL' ? { capturedAt } : {}),
           objectKey,
           mime: object.mime,
           width: object.width,

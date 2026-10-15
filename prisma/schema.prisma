@@ -108,6 +108,7 @@ model User {
   notificationPreference NotificationPreference?
   groupPreferences       GroupNotificationPreference[]
   installations          PushInstallation[]
+  memoryPreferences      PhotoMemoryPreference[]
 
   @@map("users")
   @@schema("woori")
@@ -182,31 +183,34 @@ model Album {
 }
 
 model Photo {
-  id                String         @id @default(uuid()) @db.Uuid
-  groupId           String         @db.Uuid
-  albumId           String         @db.Uuid
-  uploaderId        String         @db.Uuid
-  status            PhotoStatus    @default(PENDING)
-  bytes             BigInt         @default(0)
-  width             Int?
-  height            Int?
-  capturedAt        DateTime?      @db.Timestamptz(6)
-  captureDateSource String?        @db.VarChar(24)
-  stagingKey        String?        @db.VarChar(512)
-  uploadMime        String?        @db.VarChar(80)
-  uploadBytes       BigInt         @default(0)
-  reservedBytes     BigInt         @default(0)
-  uploadExpiresAt   DateTime?      @db.Timestamptz(6)
-  processingToken   String?        @db.Uuid
-  processingUntil   DateTime?      @db.Timestamptz(6)
-  createdAt         DateTime       @default(now()) @db.Timestamptz(6)
-  deletedAt         DateTime?      @db.Timestamptz(6)
-  group             Group          @relation(fields: [groupId], references: [id], onDelete: Restrict)
-  album             Album          @relation(fields: [albumId, groupId], references: [id, groupId], onDelete: Restrict)
-  uploader          User           @relation(fields: [uploaderId], references: [id], onDelete: Restrict)
-  variants          PhotoVariant[]
-  comments          Comment[]
-  reactions         Reaction[]
+  id                       String                  @id @default(uuid()) @db.Uuid
+  groupId                  String                  @db.Uuid
+  albumId                  String                  @db.Uuid
+  uploaderId               String                  @db.Uuid
+  status                   PhotoStatus             @default(PENDING)
+  bytes                    BigInt                  @default(0)
+  width                    Int?
+  height                   Int?
+  capturedAt               DateTime?               @db.Timestamptz(6)
+  captureDateSource        String?                 @db.VarChar(24)
+  manualCapturedDate       DateTime?               @db.Date
+  captureMetadataCheckedAt DateTime?               @db.Timestamptz(6)
+  stagingKey               String?                 @db.VarChar(512)
+  uploadMime               String?                 @db.VarChar(80)
+  uploadBytes              BigInt                  @default(0)
+  reservedBytes            BigInt                  @default(0)
+  uploadExpiresAt          DateTime?               @db.Timestamptz(6)
+  processingToken          String?                 @db.Uuid
+  processingUntil          DateTime?               @db.Timestamptz(6)
+  createdAt                DateTime                @default(now()) @db.Timestamptz(6)
+  deletedAt                DateTime?               @db.Timestamptz(6)
+  group                    Group                   @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  album                    Album                   @relation(fields: [albumId, groupId], references: [id, groupId], onDelete: Restrict)
+  uploader                 User                    @relation(fields: [uploaderId], references: [id], onDelete: Restrict)
+  variants                 PhotoVariant[]
+  memoryPreferences        PhotoMemoryPreference[]
+  comments                 Comment[]
+  reactions                Reaction[]
 
   @@unique([id, groupId])
   @@index([albumId, status, createdAt, id])
@@ -450,5 +454,17 @@ model MediaCleanupJob {
 
   @@index([completedAt, availableAt, lockedUntil])
   @@map("media_cleanup_jobs")
+  @@schema("woori")
+}
+
+model PhotoMemoryPreference {
+  userId   String    @db.Uuid
+  photoId  String    @db.Uuid
+  hiddenAt DateTime? @db.Timestamptz(6)
+  user     User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  photo    Photo     @relation(fields: [photoId], references: [id], onDelete: Restrict)
+
+  @@id([userId, photoId])
+  @@map("photo_memory_preferences")
   @@schema("woori")
 }
