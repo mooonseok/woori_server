@@ -60,6 +60,42 @@ export class PhotosService {
       throw error;
     }
   }
+  async enqueue(
+    groupId: string,
+    albumId: string,
+    photoId: string,
+    userId: string
+  ) {
+    await this.repository.assertAlbum(groupId, albumId, userId);
+    this.requireStorage();
+    await this.rateLimit.consume(`media-complete:${userId}`, 300);
+    return this.repository.enqueue(groupId, albumId, photoId, userId);
+  }
+  processing(
+    groupId: string,
+    albumId: string,
+    photoId: string,
+    userId: string
+  ) {
+    return this.repository.processing(groupId, albumId, photoId, userId);
+  }
+  uploads(
+    groupId: string,
+    albumId: string,
+    userId: string,
+    limit: number,
+    cursor?: string,
+    activeOnly = false
+  ) {
+    return this.repository.uploads(
+      groupId,
+      albumId,
+      userId,
+      limit,
+      cursor,
+      activeOnly
+    );
+  }
   async complete(
     groupId: string,
     albumId: string,

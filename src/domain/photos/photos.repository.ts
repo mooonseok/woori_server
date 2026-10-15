@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { markPhotosDeleted } from './photo-deletion';
 import { randomUUID } from 'node:crypto';
-import { Prisma } from '@prisma/client';
+import { Prisma, type Photo } from '@prisma/client';
 import { PrismaService } from '../../common/modules/prisma/prisma.service';
 import type { MediaVariant } from '../../common/media/media-storage.service';
 const RESERVATION = 90n * 1024n * 1024n;
@@ -165,6 +165,7 @@ export class PhotosRepository {
           {
             status: 'PROCESSING' as const,
             OR: [
+              { processingQueuedAt: { not: null } },
               { uploadExpiresAt: { gt: now } },
               { processingUntil: { gt: now } },
             ],
@@ -173,7 +174,7 @@ export class PhotosRepository {
       };
       if (
         (await tx.photo.count({ where: { ...active, uploaderId: userId } })) >=
-        5
+        30
       )
         throw new ConflictException({
           code: 'UPLOAD_LIMIT',
@@ -225,6 +226,8 @@ export class PhotosRepository {
       if (!photo) notFound();
       if (photo.status === 'READY') return { ready: true as const, photo };
       const now = new Date();
+      if (photo.processingQueuedAt)
+        throw new ConflictException({ code: 'PHOTO_PROCESSING' });
       if (
         photo.status === 'PROCESSING' &&
         photo.processingUntil &&
@@ -249,7 +252,7 @@ export class PhotosRepository {
         data: {
           status: 'PROCESSING',
           processingToken: token,
-          processingUntil: new Date(now.getTime() + 120_000),
+          processingUntil: new Date(now.getTime() + 5 * 60_000),
         },
       });
       return { ready: false as const, photo: claimed, token };
@@ -275,6 +278,10 @@ export class PhotosRepository {
           deletedAt: null,
           processingToken: token,
           processingUntil: { gt: new Date() },
+          OR: [
+            { processingQueuedAt: null },
+            { processingDeadlineAt: { gt: new Date() } },
+          ],
         },
       });
       if (!photo)
@@ -343,6 +350,263 @@ export class PhotosRepository {
       },
     });
     return result.count;
+  }
+  processingSummary(photo: Photo) {
+    const status =
+      photo.status === 'READY'
+        ? 'READY'
+        : photo.status === 'FAILED'
+          ? 'FAILED'
+          : 'PROCESSING';
+    const phase =
+      status !== 'PROCESSING'
+        ? status
+        : photo.processingToken &&
+            photo.processingUntil &&
+            photo.processingUntil > new Date()
+          ? 'PROCESSING'
+          : photo.processingAttempts > 0
+            ? 'RETRY_WAIT'
+            : 'QUEUED';
+    return {
+      photoId: photo.id,
+      status,
+      phase,
+      retryAfterSeconds: status === 'PROCESSING' ? 3 : null,
+      errorCode: status === 'FAILED' ? photo.processingErrorCode : null,
+      ...(status === 'READY' ? { photo: this.summary(photo, true) } : {}),
+    };
+  }
+  async enqueue(
+    groupId: string,
+    albumId: string,
+    photoId: string,
+    userId: string
+  ) {
+    return this.prisma.client.$transaction(async (tx) => {
+      await this.lockAlbum(tx, groupId, albumId, userId);
+      const photo = await tx.photo.findFirst({
+        where: {
+          id: photoId,
+          groupId,
+          albumId,
+          uploaderId: userId,
+          deletedAt: null,
+        },
+      });
+      if (!photo) notFound();
+      if (photo.processingQueuedAt || photo.status === 'READY')
+        return this.processingSummary(photo);
+      if (photo.status === 'PROCESSING')
+        throw new ConflictException({ code: 'PHOTO_PROCESSING' });
+      const now = new Date();
+      if (
+        photo.status !== 'PENDING' ||
+        !photo.uploadExpiresAt ||
+        photo.uploadExpiresAt <= now
+      )
+        throw new GoneException({ code: 'UPLOAD_EXPIRED' });
+      return this.processingSummary(
+        await tx.photo.update({
+          where: { id: photo.id },
+          data: {
+            status: 'PROCESSING',
+            processingQueuedAt: now,
+            processingAvailableAt: now,
+            processingDeadlineAt: new Date(now.getTime() + 24 * 60 * 60_000),
+            processingAttempts: 0,
+            processingErrorCode: null,
+          },
+        })
+      );
+    });
+  }
+  async processing(
+    groupId: string,
+    albumId: string,
+    photoId: string,
+    userId: string
+  ) {
+    await this.assertAlbum(groupId, albumId, userId);
+    const photo = await this.prisma.client.photo.findFirst({
+      where: {
+        id: photoId,
+        groupId,
+        albumId,
+        uploaderId: userId,
+        deletedAt: null,
+        processingQueuedAt: { not: null },
+        group: memberScope(userId),
+        album: { deletedAt: null },
+      },
+    });
+    if (!photo) notFound();
+    return this.processingSummary(photo);
+  }
+  async uploads(
+    groupId: string,
+    albumId: string,
+    userId: string,
+    limit: number,
+    cursor?: string,
+    activeOnly = false
+  ) {
+    await this.assertAlbum(groupId, albumId, userId);
+    const scope: Prisma.PhotoWhereInput = {
+      groupId,
+      albumId,
+      uploaderId: userId,
+      deletedAt: null,
+      processingQueuedAt: { not: null },
+      status: activeOnly
+        ? 'PROCESSING'
+        : { in: ['PROCESSING', 'READY', 'FAILED'] },
+      group: memberScope(userId),
+      album: { deletedAt: null },
+    };
+    let older: Prisma.PhotoWhereInput = {};
+    if (cursor) {
+      const anchor = await this.prisma.client.photo.findFirst({
+        where: { ...scope, id: cursor },
+      });
+      if (!anchor) notFound();
+      older = {
+        OR: [
+          { createdAt: { lt: anchor.createdAt } },
+          { createdAt: anchor.createdAt, id: { lt: anchor.id } },
+        ],
+      };
+    }
+    const rows = await this.prisma.client.photo.findMany({
+      where: { ...scope, ...older },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+    });
+    const hasNext = rows.length > limit;
+    if (hasNext) rows.pop();
+    return {
+      uploads: rows.map((photo) => this.processingSummary(photo)),
+      nextCursor: hasNext ? rows.at(-1)!.id : null,
+    };
+  }
+  async claimQueued() {
+    const now = new Date();
+    const candidates = await this.prisma.client.photo.findMany({
+      where: {
+        status: 'PROCESSING',
+        deletedAt: null,
+        processingQueuedAt: { not: null },
+        processingAvailableAt: { lte: now },
+        OR: [{ processingUntil: null }, { processingUntil: { lte: now } }],
+      },
+      orderBy: [{ processingAvailableAt: 'asc' }, { id: 'asc' }],
+      take: 30,
+      select: { id: true, groupId: true },
+    });
+    for (const candidate of candidates) {
+      const result = await this.prisma.client.$transaction(async (tx) => {
+        const groups = await tx.$queryRaw<
+          { status: string }[]
+        >`SELECT status FROM woori.groups WHERE id=${candidate.groupId}::uuid FOR UPDATE SKIP LOCKED`;
+        if (!groups.length) return null;
+        const photo = await tx.photo.findFirst({
+          where: {
+            id: candidate.id,
+            status: 'PROCESSING',
+            deletedAt: null,
+            processingQueuedAt: { not: null },
+            processingAvailableAt: { lte: now },
+            OR: [{ processingUntil: null }, { processingUntil: { lte: now } }],
+          },
+        });
+        if (!photo) return null;
+        const members = await tx.$queryRaw<
+          { id: string }[]
+        >`SELECT u.id FROM woori.memberships m JOIN woori.users u ON u.id=m."userId" WHERE m."groupId"=${photo.groupId}::uuid AND m."userId"=${photo.uploaderId}::uuid AND m.status='ACTIVE' AND u.status='ACTIVE' FOR SHARE OF m,u`;
+        const album = await tx.album.findFirst({
+          where: { id: photo.albumId, groupId: photo.groupId, deletedAt: null },
+        });
+        const error =
+          groups[0].status !== 'ACTIVE' || !members.length || !album
+            ? 'UPLOAD_ACCESS_REVOKED'
+            : !photo.processingDeadlineAt || photo.processingDeadlineAt <= now
+              ? 'UPLOAD_EXPIRED'
+              : photo.processingAttempts >= 5
+                ? 'PHOTO_PROCESSING_FAILED'
+                : null;
+        if (error) {
+          await tx.photo.update({
+            where: { id: photo.id },
+            data: {
+              status: 'FAILED',
+              reservedBytes: 0n,
+              processingToken: null,
+              processingUntil: null,
+              processingErrorCode: error,
+            },
+          });
+          return null;
+        }
+        const token = randomUUID();
+        const claimed = await tx.photo.update({
+          where: { id: photo.id },
+          data: {
+            processingToken: token,
+            processingUntil: new Date(now.getTime() + 5 * 60_000),
+            processingAttempts: { increment: 1 },
+          },
+        });
+        return { photo: claimed, token };
+      });
+      if (result) return result;
+    }
+    return null;
+  }
+  async failQueued(photoId: string, token: string, invalid: boolean) {
+    return this.prisma.client.$transaction(async (tx) => {
+      const initial = await tx.photo.findUnique({
+        where: { id: photoId },
+        select: { groupId: true },
+      });
+      if (!initial) return false;
+      await tx.$queryRaw`SELECT id FROM woori.groups WHERE id=${initial.groupId}::uuid FOR UPDATE`;
+      const now = new Date();
+      const photo = await tx.photo.findFirst({
+        where: {
+          id: photoId,
+          status: 'PROCESSING',
+          deletedAt: null,
+          processingToken: token,
+          processingUntil: { gt: now },
+          processingQueuedAt: { not: null },
+        },
+      });
+      if (!photo) return false;
+      const terminal =
+        invalid ||
+        photo.processingAttempts >= 5 ||
+        !photo.processingDeadlineAt ||
+        photo.processingDeadlineAt <= now;
+      await tx.photo.update({
+        where: { id: photoId },
+        data: {
+          status: terminal ? 'FAILED' : 'PROCESSING',
+          processingToken: null,
+          processingUntil: null,
+          processingAvailableAt: new Date(
+            now.getTime() +
+              Math.min(15 * 60, 15 * 2 ** (photo.processingAttempts - 1)) * 1000
+          ),
+          processingErrorCode: terminal
+            ? invalid
+              ? 'INVALID_PHOTO_FILE'
+              : 'PHOTO_PROCESSING_FAILED'
+            : null,
+          ...(terminal ? { reservedBytes: 0n } : {}),
+        },
+      });
+      return true;
+    });
   }
   async content(
     groupId: string,

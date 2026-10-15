@@ -66,10 +66,22 @@
     {
       "id": "W04",
       "title": "모바일 사진·처리 안정성",
-      "status": "pending",
-      "evidence": [],
-      "implementationRefs": [],
-      "peerEvidence": []
+      "status": "in_progress",
+      "evidence": [
+        "2026-10-15: user approved 30MiB per file, 30 files / 300MiB per batch, 60MP maximum, original EXIF preservation with download notice, durable processing queue and report-only reconciliation.",
+        "Server policy:quality passed: 18 policy, 71 unit, 67 isolated PostgreSQL integration tests; Prisma/typecheck/format/build passed. Client isolated-copy policy:quality passed: 16 policy and 76 functional tests, lint/typecheck/boundaries/format and web/admin builds. Later browser-feedback fixes passed targeted typecheck/ESLint/format and 16 media tests.",
+        "Real private R2 fixture: three READY photos and one invalid JPEG FAILED. 48MP JPEG decoded; EXIF-oriented display was 480x640 without EXIF; two original downloads exactly matched uploaded bytes. Missing-reference report count 0; synthetic +2h report clock identified one failed staging object without deleting it.",
+        "Chrome member: actual file chooser upload, transfer/acceptance/worker completion, reload recovery, HEIC and 31-file preflight rejection without false success toast. Owner saw three shared photos without member job/error state. Outsider processing lookup returned 404. 390px DOM had no horizontal overflow; physical devices not tested.",
+        "With explicit approval, additive 20261020000000_photo_processing_queue applied to 127.0.0.1:55439/woori_dev; no new runtime grants or existing-photo deletion. Remote/production DB untouched.",
+        "Four synthetic photo prefixes and staging objects removed via existing group/media cleanup; group DELETED, usedBytes 0. Isolated DB/private state/mail removed, browser logged out and viewport reset; normal local API restored.",
+        "HEIC PoC: official synthetic HEVC HEIC pixel decoding fails in installed sharp/libvips despite readable metadata. HEIC remains unsupported; no new dependency added. W04 stays in_progress until physical-device acceptance and deployment memory testing."
+      ],
+      "implementationRefs": [
+        "feature/mobile-photo-stability; implementation and verification recorded in this W04 commit; physical-device acceptance pending"
+      ],
+      "peerEvidence": [
+        "Both repositories aligned with server contracts/openapi.json 0.10.0; process/status/own-upload-list endpoints are additive."
+      ]
     },
     {
       "id": "W05",
@@ -105,7 +117,8 @@
     }
   ],
   "pendingDecisions": [
-    "W04-W08: review corresponding DESIGN.md decisions before implementation."
+    "W04: physical iPhone/Android acceptance and deployment memory testing remain; HEIC decoder adoption deferred after failed installed-decoder PoC.",
+    "W05-W08: review corresponding DESIGN.md decisions before implementation."
   ],
   "durableDecisionsMoved": false,
   "permanentRefs": []

@@ -29,3 +29,10 @@ export class PhotoContentDto {
   @IsOptional() @IsIn(['original', 'display', 'thumbnail']) variant:
     'original' | 'display' | 'thumbnail' = 'display';
 }
+
+export class UploadListDto {
+  @IsOptional() @IsUUID() cursor?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) limit = 30;
+  @IsOptional() @IsIn(['true', 'false']) activeOnly?: string;
+}
+export class EmptyPhotoMutationDto {}

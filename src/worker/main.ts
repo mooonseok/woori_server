@@ -1,3 +1,4 @@
+import { PhotoProcessingService } from './photo-processing/photo-processing.service';
 import 'reflect-metadata';
 import { PushDispatchService } from './push/push-dispatch.service';
 import { NestFactory } from '@nestjs/core';
@@ -25,14 +26,21 @@ async function main() {
   const cleanup = app.get(MediaCleanupService);
   const push = app.get(PushDispatchService);
   const groups = app.get(GroupCleanupService);
+  const photos = app.get(PhotoProcessingService);
   const runPass = async () => {
     const results = await Promise.allSettled([
       cleanup.runBatch(),
       push.runBatch(),
       groups.runBatch(),
+      photos.runBatch(),
     ]);
     for (const [index, result] of results.entries()) {
-      const job = ['media-cleanup', 'web-push', 'group-cleanup'][index];
+      const job = [
+        'media-cleanup',
+        'web-push',
+        'group-cleanup',
+        'photo-processing',
+      ][index];
       if (result.status === 'fulfilled') {
         if (
           Object.values(result.value).some(

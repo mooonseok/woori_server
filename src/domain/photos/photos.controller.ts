@@ -19,6 +19,8 @@ import {
   PhotoListDto,
   PhotoParamsDto,
   UploadPhotoDto,
+  UploadListDto,
+  EmptyPhotoMutationDto,
 } from './dto/photo.dto';
 import { PhotosService } from './photos.service';
 @Controller('v1/groups/:groupId/albums/:albumId')
@@ -37,6 +39,33 @@ export class PhotosController {
     @CurrentUser() u: SessionUser
   ) {
     return this.service.upload(p.groupId, p.albumId, u.id, dto);
+  }
+  @Get('uploads') uploads(
+    @Param() p: AlbumParamsDto,
+    @Query() q: UploadListDto,
+    @CurrentUser() u: SessionUser
+  ) {
+    return this.service.uploads(
+      p.groupId,
+      p.albumId,
+      u.id,
+      q.limit,
+      q.cursor,
+      q.activeOnly === 'true'
+    );
+  }
+  @Post('photos/:photoId/process') @HttpCode(202) process(
+    @Param() p: PhotoParamsDto,
+    @Body() _body: EmptyPhotoMutationDto,
+    @CurrentUser() u: SessionUser
+  ) {
+    return this.service.enqueue(p.groupId, p.albumId, p.photoId, u.id);
+  }
+  @Get('photos/:photoId/processing') processing(
+    @Param() p: PhotoParamsDto,
+    @CurrentUser() u: SessionUser
+  ) {
+    return this.service.processing(p.groupId, p.albumId, p.photoId, u.id);
   }
   @Post('photos/:photoId/complete') @HttpCode(200) complete(
     @Param() p: PhotoParamsDto,
