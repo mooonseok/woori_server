@@ -89,7 +89,8 @@ export class AuthService {
     await this.repository.createSession(
       user.id,
       hashToken(token),
-      user.passwordHash
+      user.passwordHash,
+      user.email
     );
     await this.rotateCookie(request, response, token);
     return { user: publicUser(user) };
@@ -133,8 +134,8 @@ export class AuthService {
   }
   private async sendVerification(userId: string, email: string) {
     const token = createToken();
-    await this.repository.createEmailToken(userId, hashToken(token));
-    await this.mail.sendVerification(email, token);
+    if (await this.repository.createEmailToken(userId, hashToken(token), email))
+      await this.mail.sendVerification(email, token);
   }
   private async rotateCookie(
     request: Request,

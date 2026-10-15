@@ -1,3 +1,5 @@
+import { AccountSettingsService } from './account-settings.service';
+import { ChangePasswordDto, RequestEmailChangeDto } from './dto/auth.dto';
 import {
   Body,
   Controller,
@@ -24,6 +26,7 @@ import { ConfirmEmailDto, LoginDto, SignupDto } from './dto/auth.dto';
 export class AuthController {
   constructor(
     private readonly service: AuthService,
+    private readonly settings: AccountSettingsService,
     private readonly recovery: RecoveryService
   ) {}
   @Public()
@@ -62,6 +65,35 @@ export class AuthController {
   @HttpCode(204)
   resetPassword(@Body() dto: ResetPasswordDto, @Req() request: Request) {
     return this.recovery.reset(dto, request);
+  }
+  @Post('password/change')
+  @HttpCode(204)
+  changePassword(
+    @CurrentUser() user: SessionUser,
+    @Body() dto: ChangePasswordDto,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response
+  ) {
+    return this.settings.changePassword(user.id, dto, request, response);
+  }
+  @Post('email-change/request')
+  @HttpCode(202)
+  requestEmailChange(
+    @CurrentUser() user: SessionUser,
+    @Body() dto: RequestEmailChangeDto,
+    @Req() request: Request
+  ) {
+    return this.settings.requestEmail(user.id, dto, request);
+  }
+  @Post('email-change/confirm')
+  @HttpCode(204)
+  confirmEmailChange(
+    @CurrentUser() user: SessionUser,
+    @Body() dto: ConfirmEmailDto,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response
+  ) {
+    return this.settings.confirmEmail(user.id, dto.token, request, response);
   }
   @Patch('profile')
   profile(@CurrentUser() user: SessionUser, @Body() dto: UpdateProfileDto) {

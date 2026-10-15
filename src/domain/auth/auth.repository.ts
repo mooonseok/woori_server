@@ -29,7 +29,8 @@ export class AuthRepository {
   async createSession(
     userId: string,
     tokenHash: string,
-    expectedPasswordHash: string
+    expectedPasswordHash: string,
+    expectedEmail?: string
   ) {
     return this.prisma.client.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM woori.users WHERE id=${userId}::uuid FOR UPDATE`;
@@ -37,6 +38,7 @@ export class AuthRepository {
         where: {
           id: userId,
           passwordHash: expectedPasswordHash,
+          ...(expectedEmail ? { email: expectedEmail } : {}),
           status: 'ACTIVE',
         },
       });
@@ -90,18 +92,39 @@ export class AuthRepository {
       });
     });
   }
-  async createEmailToken(userId: string, tokenHash: string) {
-    await this.prisma.client.emailToken.create({
-      data: {
-        userId,
-        tokenHash,
-        purpose: 'VERIFY_EMAIL',
-        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
-      },
+  async createEmailToken(
+    userId: string,
+    tokenHash: string,
+    expectedEmail?: string
+  ) {
+    return this.prisma.client.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM woori.users WHERE id=${userId}::uuid FOR UPDATE`;
+      const user = await tx.user.findFirst({
+        where: {
+          id: userId,
+          status: 'ACTIVE',
+          ...(expectedEmail ? { email: expectedEmail } : {}),
+        },
+      });
+      if (!user) return false;
+      await tx.emailToken.updateMany({
+        where: { userId, purpose: 'VERIFY_EMAIL', consumedAt: null },
+        data: { consumedAt: new Date() },
+      });
+      await tx.emailToken.create({
+        data: {
+          userId,
+          tokenHash,
+          purpose: 'VERIFY_EMAIL',
+          expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+        },
+      });
+      return true;
     });
   }
   async verifyEmail(tokenHash: string, userId: string): Promise<User> {
     return this.prisma.client.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM woori.users WHERE id=${userId}::uuid FOR UPDATE`;
       const now = new Date();
       const token = await tx.emailToken.findUnique({ where: { tokenHash } });
       if (

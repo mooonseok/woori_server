@@ -54,3 +54,21 @@ export class UpdateProfileDto {
   @Length(1, 80)
   displayName!: string;
 }
+
+export class ChangePasswordDto {
+  @IsString()
+  @Length(12, 128)
+  currentPassword!: string;
+  @IsString()
+  @Length(12, 128)
+  newPassword!: string;
+}
+export class RequestEmailChangeDto {
+  @IsString()
+  @Length(12, 128)
+  currentPassword!: string;
+  @Transform(normalize)
+  @IsEmail()
+  @MaxLength(254)
+  newEmail!: string;
+}

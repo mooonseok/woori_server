@@ -1,3 +1,5 @@
+import { AccountSettingsRepository } from './account-settings.repository';
+import { AccountSettingsService } from './account-settings.service';
 import { RecoveryRepository } from './recovery.repository';
 import { RecoveryService } from './recovery.service';
 import { Module } from '@nestjs/common';
@@ -11,6 +13,8 @@ import { MailService } from './mail.service';
   imports: [PrismaModule],
   controllers: [AuthController],
   providers: [
+    AccountSettingsRepository,
+    AccountSettingsService,
     AuthService,
     AuthRepository,
     AuthRateLimitService,

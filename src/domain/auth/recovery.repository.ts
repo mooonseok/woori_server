@@ -1,3 +1,4 @@
+import { revokeAccountCredentials } from './revoke-account-credentials';
 import {
   BadRequestException,
   Injectable,
@@ -58,22 +59,7 @@ export class RecoveryRepository {
       });
       if (used.count !== 1) throw this.invalid();
       await tx.user.update({ where: { id: user.id }, data: { passwordHash } });
-      await tx.emailToken.updateMany({
-        where: { userId: user.id, purpose: PURPOSE, consumedAt: null },
-        data: { consumedAt: now },
-      });
-      await tx.session.updateMany({
-        where: { userId: user.id, revokedAt: null },
-        data: { revokedAt: now },
-      });
-      await tx.pushInstallation.updateMany({
-        where: { userId: user.id, revokedAt: null },
-        data: {
-          revokedAt: now,
-          enabled: false,
-          bindingVersion: { increment: 1 },
-        },
-      });
+      await revokeAccountCredentials(tx, user.id, now);
     });
   }
   async profile(userId: string, displayName: string) {
