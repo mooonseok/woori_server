@@ -86,7 +86,16 @@ export class GroupManagementRepository {
           userId: true,
           role: true,
           joinedAt: true,
-          user: { select: { displayName: true } },
+          user: {
+            select: {
+              displayName: true,
+              // Only this viewer's own block; roster membership is unchanged.
+              blockedBy: {
+                where: { blockerId: userId },
+                select: { blockerId: true },
+              },
+            },
+          },
         },
       });
       const more = rows.length > limit;
@@ -95,6 +104,7 @@ export class GroupManagementRepository {
         members: rows.map(({ user, ...row }) => ({
           ...row,
           displayName: user.displayName,
+          blockedByMe: user.blockedBy.length > 0,
         })),
         nextCursor: more ? rows.at(-1)!.userId : null,
       };

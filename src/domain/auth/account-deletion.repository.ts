@@ -7,6 +7,9 @@ import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/modules/prisma/prisma.service';
 import { markPhotosDeleted } from '../photos/photo-deletion';
+import { eraseInquiriesOnAccountDeletion } from '../service-support/inquiry-retention';
+import { anonymizeReportsOnAccountDeletion } from '../reports/report-retention';
+import { eraseBlocksOnAccountDeletion } from '../blocks/block-retention';
 
 class MembershipChanged extends Error {}
 @Injectable()
@@ -118,6 +121,12 @@ export class AccountDeletionRepository {
               where: { userId },
             });
             await tx.photoMemoryPreference.deleteMany({ where: { userId } });
+            // Inquiries are personal support records; the policy lives in one place.
+            await eraseInquiriesOnAccountDeletion(tx, userId);
+            // Filed reports stay for the operator without the reporter's free text.
+            await anonymizeReportsOnAccountDeletion(tx, userId);
+            // Own blocks are personal settings; blocks on this user are kept.
+            await eraseBlocksOnAccountDeletion(tx, userId);
             const tombstone = randomUUID();
             await tx.user.update({
               where: { id: userId },

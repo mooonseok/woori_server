@@ -12,10 +12,15 @@ import {
   MEMORY_TIME_ZONE,
 } from './memory-date';
 import type { MemoriesQueryDto } from './dto/memories.dto';
+import { notBlockedBySql } from '../blocks/block-visibility';
 
-type PhotoRow = Prisma.PhotoGetPayload<{ select: typeof photoSummary }> & {
+type PhotoRow = Omit<
+  Prisma.PhotoGetPayload<{ select: typeof photoSummary }>,
+  'uploader'
+> & {
   albumTitle: string;
   effectiveDate: Date;
+  uploaderName: string;
 };
 const dateExpression = Prisma.sql`COALESCE(p."manualCapturedDate", (COALESCE(p."capturedAt",p."createdAt") AT TIME ZONE INTERVAL '+09:00')::date)`;
 @Injectable()
@@ -53,7 +58,9 @@ export class MemoriesRepository {
         q.kind === 'hidden'
           ? hidden
           : Prisma.sql`NOT ${hidden} AND EXTRACT(YEAR FROM ${dateExpression})<${calendar.year} AND EXTRACT(MONTH FROM ${dateExpression})=${calendar.month} AND ${q.kind === 'today' ? matchesDay : Prisma.sql`NOT ${matchesDay}`}`;
-      const visible = Prisma.sql`FROM woori.photos p JOIN woori.albums a ON a.id=p."albumId" AND a."groupId"=p."groupId" AND a."deletedAt" IS NULL WHERE p."groupId"=${groupId}::uuid AND p.status='READY' AND p."deletedAt" IS NULL AND ${category}`;
+      // Every kind (today/month/hidden) and its cursor exclude uploaders this
+      // viewer blocked.
+      const visible = Prisma.sql`FROM woori.photos p JOIN woori.albums a ON a.id=p."albumId" AND a."groupId"=p."groupId" AND a."deletedAt" IS NULL JOIN woori.users up ON up.id=p."uploaderId" WHERE p."groupId"=${groupId}::uuid AND p.status='READY' AND p."deletedAt" IS NULL AND ${notBlockedBySql(userId, Prisma.sql`p."uploaderId"`)} AND ${category}`;
       let older = Prisma.empty;
       if (q.cursor) {
         const anchor = await tx.$queryRaw<{ date: Date }[]>(
@@ -63,7 +70,7 @@ export class MemoriesRepository {
         older = Prisma.sql`AND (${dateExpression},p.id)<(${anchor[0].date}::date,${q.cursor}::uuid)`;
       }
       const rows = await tx.$queryRaw<PhotoRow[]>(
-        Prisma.sql`SELECT p.id,p."groupId",p."albumId",p."uploaderId",p.width,p.height,p."capturedAt",p."manualCapturedDate",p."captureDateSource",p."createdAt",p.status,a.title AS "albumTitle",${dateExpression} AS "effectiveDate" ${visible} ${older} ORDER BY ${dateExpression} DESC,p.id DESC LIMIT ${q.limit + 1}`
+        Prisma.sql`SELECT p.id,p."groupId",p."albumId",p."uploaderId",p.width,p.height,p."capturedAt",p."manualCapturedDate",p."captureDateSource",p."createdAt",p.status,a.title AS "albumTitle",up."displayName" AS "uploaderName",${dateExpression} AS "effectiveDate" ${visible} ${older} ORDER BY ${dateExpression} DESC,p.id DESC LIMIT ${q.limit + 1}`
       );
       const more = rows.length > q.limit;
       if (more) rows.pop();
@@ -72,7 +79,13 @@ export class MemoriesRepository {
         timeZone: MEMORY_TIME_ZONE,
         kind: q.kind,
         items: rows.map((row) => ({
-          photo: this.photos.summary(row, owner || row.uploaderId === userId),
+          photo: this.photos.summary(
+            {
+              ...row,
+              uploader: { id: row.uploaderId, displayName: row.uploaderName },
+            },
+            owner || row.uploaderId === userId
+          ),
           albumTitle: row.albumTitle,
           ...effectivePhotoDate(row),
           yearsAgo: Math.max(
@@ -85,10 +98,13 @@ export class MemoriesRepository {
       };
     });
   }
+  // Capture-date edits and hide/restore use the same viewer visibility as the
+  // list: a photo whose uploader this viewer blocked is not found.
   private async lockPhoto(
     tx: Prisma.TransactionClient,
     groupId: string,
     photoId: string,
+    userId: string,
     albumId?: string
   ) {
     const initial = await tx.photo.findFirst({
@@ -100,9 +116,9 @@ export class MemoriesRepository {
       { id: string }[]
     >`SELECT id FROM woori.albums WHERE id=${initial.albumId}::uuid AND "groupId"=${groupId}::uuid AND "deletedAt" IS NULL FOR SHARE`;
     if (!albums.length) notFound();
-    const rows = await tx.$queryRaw<
-      { id: string }[]
-    >`SELECT id FROM woori.photos WHERE id=${photoId}::uuid AND "groupId"=${groupId}::uuid AND "albumId"=${initial.albumId}::uuid AND status='READY' AND "deletedAt" IS NULL FOR UPDATE`;
+    const rows = await tx.$queryRaw<{ id: string }[]>(
+      Prisma.sql`SELECT p.id FROM woori.photos p WHERE p.id=${photoId}::uuid AND p."groupId"=${groupId}::uuid AND p."albumId"=${initial.albumId}::uuid AND p.status='READY' AND p."deletedAt" IS NULL AND ${notBlockedBySql(userId, Prisma.sql`p."uploaderId"`)} FOR UPDATE OF p`
+    );
     if (!rows.length) notFound();
     return tx.photo.findUniqueOrThrow({
       where: { id: photoId },
@@ -117,7 +133,7 @@ export class MemoriesRepository {
     date: Date | null
   ) {
     return this.withGroup(groupId, userId, async (tx, owner) => {
-      const photo = await this.lockPhoto(tx, groupId, photoId, albumId);
+      const photo = await this.lockPhoto(tx, groupId, photoId, userId, albumId);
       if (!owner && photo.uploaderId !== userId) notFound();
       const updated = await tx.photo.update({
         where: { id: photoId },
@@ -134,7 +150,7 @@ export class MemoriesRepository {
     hidden: boolean
   ) {
     await this.withGroup(groupId, userId, async (tx) => {
-      await this.lockPhoto(tx, groupId, photoId);
+      await this.lockPhoto(tx, groupId, photoId, userId);
       if (hidden)
         await tx.photoMemoryPreference.upsert({
           where: { userId_photoId: { userId, photoId } },

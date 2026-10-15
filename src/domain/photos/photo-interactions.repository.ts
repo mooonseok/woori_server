@@ -3,6 +3,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/modules/prisma/prisma.service';
 import { notFound } from './photos.repository';
+import { lockReadablePhoto } from './photo-access';
+import { notBlockedBy, notBlockedBySql } from '../blocks/block-visibility';
 import {
   REACTION_EMOJIS,
   type CreateCommentDto,
@@ -50,30 +52,10 @@ export class PhotoInteractionsRepository {
     ) => Promise<T>
   ) {
     return this.prisma.client.$transaction(async (tx) => {
-      const photo = await tx.photo.findUnique({
-        where: { id: photoId },
-        select: { groupId: true, albumId: true },
-      });
-      if (!photo) notFound();
-      // Match media deletion's group -> membership -> photo lock order.
-      // Shared locks hold access valid until reads/writes commit, including direct revocation.
-      const groups = await tx.$queryRaw<
-        { id: string }[]
-      >`SELECT id FROM woori.groups WHERE id=${photo.groupId}::uuid AND status='ACTIVE' FOR SHARE`;
-      if (!groups.length) notFound();
-      const members = await tx.$queryRaw<
-        { role: string }[]
-      >`SELECT m.role FROM woori.memberships m JOIN woori.users u ON u.id=m."userId" WHERE m."groupId"=${photo.groupId}::uuid AND m."userId"=${userId}::uuid AND m.status='ACTIVE' AND u.status='ACTIVE' FOR SHARE OF m,u`;
-      if (!members.length) notFound();
-      const albums = await tx.$queryRaw<
-        { id: string }[]
-      >`SELECT id FROM woori.albums WHERE id=${photo.albumId}::uuid AND "groupId"=${photo.groupId}::uuid AND "deletedAt" IS NULL FOR SHARE`;
-      if (!albums.length) notFound();
-      const photos = await tx.$queryRaw<
-        { id: string }[]
-      >`SELECT id FROM woori.photos WHERE id=${photoId}::uuid AND "groupId"=${photo.groupId}::uuid AND "albumId"=${photo.albumId}::uuid AND status='READY' AND "deletedAt" IS NULL FOR SHARE`;
-      if (!photos.length) notFound();
-      return operation(tx, photo.groupId, members[0].role === 'OWNER');
+      // group -> membership -> album -> photo shared locks (see photo-access).
+      const access = await lockReadablePhoto(tx, photoId, userId);
+      if (!access) notFound();
+      return operation(tx, access.groupId, access.owner);
     });
   }
   listComments(
@@ -92,7 +74,14 @@ export class PhotoInteractionsRepository {
         }))
       )
         commentNotFound();
-      const where = { photoId, groupId, deletedAt: null };
+      // The page, its cursor query and total share one visibility predicate:
+      // comments by authors this viewer blocked are hidden from this viewer only.
+      const where = {
+        photoId,
+        groupId,
+        deletedAt: null,
+        author: notBlockedBy(userId),
+      } satisfies Prisma.CommentWhereInput;
       // Compare the original PostgreSQL timestamp/id tuple without JavaScript
       // millisecond truncation. An excluded soft-deleted anchor must not cause
       // ORM cursor skip:1 to discard the next visible comment.
@@ -101,6 +90,7 @@ export class PhotoInteractionsRepository {
             SELECT c.id FROM woori.comments c
             WHERE c."photoId"=${photoId}::uuid AND c."groupId"=${groupId}::uuid
               AND c."deletedAt" IS NULL
+              AND ${notBlockedBySql(userId, Prisma.sql`c."authorId"`)}
               AND (c."createdAt",c.id) < (
                 SELECT "createdAt",id FROM woori.comments
                 WHERE id=${cursor}::uuid AND "photoId"=${photoId}::uuid
@@ -207,11 +197,14 @@ export class PhotoInteractionsRepository {
   ) {
     // Counts and the actor's selection use one MVCC snapshot under concurrent
     // changes, so myReaction can never contradict its response's aggregate.
+    // Reactions by users this viewer blocked are excluded (never the viewer's own).
     const counts = await tx.$queryRaw<
       { emoji: string; count: bigint; mine: boolean }[]
-    >`
-      SELECT emoji,COUNT(*) AS count,BOOL_OR("userId"=${userId}::uuid) AS mine
-      FROM woori.reactions WHERE "photoId"=${photoId}::uuid GROUP BY emoji`;
+    >(Prisma.sql`
+      SELECT r.emoji,COUNT(*) AS count,BOOL_OR(r."userId"=${userId}::uuid) AS mine
+      FROM woori.reactions r WHERE r."photoId"=${photoId}::uuid
+        AND ${notBlockedBySql(userId, Prisma.sql`r."userId"`)}
+      GROUP BY r.emoji`);
     const reactions = REACTION_EMOJIS.flatMap((emoji) => {
       const count = Number(
         counts.find((entry) => entry.emoji === emoji)?.count ?? 0n

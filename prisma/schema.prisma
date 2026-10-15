@@ -86,6 +86,61 @@ enum JobStatus {
   @@schema("woori")
 }
 
+enum NoticeStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+
+  @@schema("woori")
+}
+
+enum InquiryCategory {
+  ACCOUNT
+  GROUP
+  PHOTO
+  NOTIFICATION
+  BUG
+  OTHER
+
+  @@schema("woori")
+}
+
+enum InquiryStatus {
+  RECEIVED
+  IN_PROGRESS
+  ANSWERED
+  CLOSED
+
+  @@schema("woori")
+}
+
+enum ReportTargetType {
+  PHOTO
+  COMMENT
+  USER
+
+  @@schema("woori")
+}
+
+enum ReportReason {
+  INAPPROPRIATE
+  HARASSMENT
+  PRIVACY
+  SPAM
+  OTHER
+
+  @@schema("woori")
+}
+
+enum ReportStatus {
+  RECEIVED
+  REVIEWING
+  RESOLVED
+  DISMISSED
+
+  @@schema("woori")
+}
+
 model User {
   id                     String                        @id @default(uuid()) @db.Uuid
   username               String                        @unique @db.VarChar(64)
@@ -109,6 +164,11 @@ model User {
   groupPreferences       GroupNotificationPreference[]
   installations          PushInstallation[]
   memoryPreferences      PhotoMemoryPreference[]
+  inquiries              Inquiry[]
+  reportsFiled           ContentReport[]               @relation("ReportsFiled")
+  reportsReceived        ContentReport[]               @relation("ReportsReceived")
+  blocks                 UserBlock[]                   @relation("Blocker")
+  blockedBy              UserBlock[]                   @relation("BlockedUser")
 
   @@map("users")
   @@schema("woori")
@@ -145,6 +205,7 @@ model Group {
   photos        Photo[]
   notifications Notification[]
   preferences   GroupNotificationPreference[]
+  reports       ContentReport[]
 
   @@map("groups")
   @@schema("woori")
@@ -380,6 +441,7 @@ model NotificationDelivery {
   installation   PushInstallation @relation(fields: [installationId], references: [id], onDelete: Restrict)
 
   @@index([status, nextAttemptAt])
+  @@index([notificationId])
   @@map("notification_deliveries")
   @@schema("woori")
 }
@@ -397,6 +459,7 @@ model OutboxEvent {
   createdAt     DateTime  @default(now()) @db.Timestamptz(6)
 
   @@index([status, nextAttemptAt])
+  @@index([aggregateId])
   @@map("outbox_events")
   @@schema("woori")
 }
@@ -472,5 +535,74 @@ model PhotoMemoryPreference {
 
   @@id([userId, photoId])
   @@map("photo_memory_preferences")
+  @@schema("woori")
+}
+
+model Notice {
+  id          String       @id @default(uuid()) @db.Uuid
+  title       String       @db.VarChar(120)
+  body        String       @db.VarChar(10000)
+  status      NoticeStatus @default(DRAFT)
+  publishedAt DateTime?    @db.Timestamptz(6)
+  createdAt   DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime     @updatedAt @db.Timestamptz(6)
+
+  @@index([status, publishedAt(sort: Desc), id(sort: Desc)])
+  @@map("notices")
+  @@schema("woori")
+}
+
+model Inquiry {
+  id         String          @id @default(uuid()) @db.Uuid
+  userId     String          @db.Uuid
+  category   InquiryCategory
+  title      String          @db.VarChar(100)
+  body       String          @db.VarChar(2000)
+  status     InquiryStatus   @default(RECEIVED)
+  answer     String?         @db.VarChar(4000)
+  answeredAt DateTime?       @db.Timestamptz(6)
+  createdAt  DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime        @updatedAt @db.Timestamptz(6)
+  user       User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt(sort: Desc), id(sort: Desc)])
+  @@map("inquiries")
+  @@schema("woori")
+}
+
+model ContentReport {
+  id           String           @id @default(uuid()) @db.Uuid
+  reporterId   String           @db.Uuid
+  groupId      String           @db.Uuid
+  targetType   ReportTargetType
+  targetId     String           @db.Uuid
+  targetUserId String           @db.Uuid
+  reason       ReportReason
+  detail       String?          @db.VarChar(500)
+  status       ReportStatus     @default(RECEIVED)
+  createdAt    DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime         @updatedAt @db.Timestamptz(6)
+  resolvedAt   DateTime?        @db.Timestamptz(6)
+  reporter     User             @relation("ReportsFiled", fields: [reporterId], references: [id], onDelete: Restrict)
+  targetUser   User             @relation("ReportsReceived", fields: [targetUserId], references: [id], onDelete: Restrict)
+  group        Group            @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  @@unique([reporterId, targetType, targetId])
+  @@index([reporterId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([status, createdAt])
+  @@map("content_reports")
+  @@schema("woori")
+}
+
+model UserBlock {
+  blockerId String   @db.Uuid
+  blockedId String   @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  blocker   User     @relation("Blocker", fields: [blockerId], references: [id], onDelete: Restrict)
+  blocked   User     @relation("BlockedUser", fields: [blockedId], references: [id], onDelete: Restrict)
+
+  @@id([blockerId, blockedId])
+  @@index([blockedId])
+  @@map("user_blocks")
   @@schema("woori")
 }

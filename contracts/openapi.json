@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "우리 인증·그룹·초대·앨범·사진 API",
-    "version": "0.12.0",
-    "description": "현재 구현된 Nest API 계약. 모든 응답은 Cache-Control: no-store이다. 브라우저 요청은 credentials: include를 사용한다. 운영 세션은 HttpOnly·Secure·SameSite=Lax인 __Host-woori_session 쿠키, 비운영은 woori_session 쿠키이다. 모든 변경 메서드는 허용 목록과 정확히 일치하는 Origin 및 X-Woori-Request: 1을 요구하며 본문은 application/json을 사용한다. 알 수 없는 요청 필드는 400으로 거절한다. API는 서버 프레임워크 전역 prefix 없이 아래 경로를 직접 제공한다. 회원 한정 앨범 목록 조회는 실제 DB에 연결되어 있다. 앨범 생성과 비공개 R2 사진 업로드·조회가 구현되어 있다. 업로드는 허가→R2 PUT→완료 순서이며 완료 시 서버에서 파일을 검증하고 파생본을 생성한다. 사진 콘텐츠는 매 요청 현재 멤버십을 확인하며 private, no-store이다. 웹 푸시 구독·세션 연결·Outbox 발송 및 수신 직전 표시 권한 검사가 구현되어 있다. 네이티브 푸시·관리자 운영 기능은 포함하지 않는다. 일반/위치 댓글과 사용자당 사진별 이모지 반응을 DB에 저장한다. 모든 조회 및 변경은 현재 활성 멤버십, 활성 그룹, 삭제되지 않은 앨범과 READY 사진을 검사한다. 댓글은 작성자만 수정하고 작성자 또는 그룹장만 삭제한다. 이름·이메일 계정 복구, 일회용 비밀번호 재설정과 현재 계정 이름 수정이 구현되어 있다. 그룹 구성원 조회·이름 수정·탈퇴·내보내기·소유권 이전·비동기 그룹 삭제가 구현되어 있다. 촬영일 출처·수동 수정, KST 날짜 기반 개인 추억 조회·숨김·복원이 구현되어 있다. 추억 푸시는 자동 발송하지 않는다."
+    "version": "0.15.0",
+    "description": "현재 구현된 Nest API 계약. 모든 응답은 Cache-Control: no-store이다. 브라우저 요청은 credentials: include를 사용한다. 운영 세션은 HttpOnly·Secure·SameSite=Lax인 __Host-woori_session 쿠키, 비운영은 woori_session 쿠키이다. 모든 변경 메서드는 허용 목록과 정확히 일치하는 Origin 및 X-Woori-Request: 1을 요구하며 본문은 application/json을 사용한다. 알 수 없는 요청 필드는 400으로 거절한다. API는 서버 프레임워크 전역 prefix 없이 아래 경로를 직접 제공한다. 회원 한정 앨범 목록 조회는 실제 DB에 연결되어 있다. 앨범 생성과 비공개 R2 사진 업로드·조회가 구현되어 있다. 업로드는 허가→R2 PUT→완료 순서이며 완료 시 서버에서 파일을 검증하고 파생본을 생성한다. 사진 콘텐츠는 매 요청 현재 멤버십을 확인하며 private, no-store이다. 웹 푸시 구독·세션 연결·Outbox 발송 및 수신 직전 표시 권한 검사가 구현되어 있다. 네이티브 푸시·관리자 운영 기능은 포함하지 않는다. 일반/위치 댓글과 사용자당 사진별 이모지 반응을 DB에 저장한다. 모든 조회 및 변경은 현재 활성 멤버십, 활성 그룹, 삭제되지 않은 앨범과 READY 사진을 검사한다. 댓글은 작성자만 수정하고 작성자 또는 그룹장만 삭제한다. 이름·이메일 계정 복구, 일회용 비밀번호 재설정과 현재 계정 이름 수정이 구현되어 있다. 그룹 구성원 조회·이름 수정·탈퇴·내보내기·소유권 이전·비동기 그룹 삭제가 구현되어 있다. 촬영일 출처·수동 수정, KST 날짜 기반 개인 추억 조회·숨김·복원이 구현되어 있다. 추억 푸시는 자동 발송하지 않는다. 공지사항(게시된 항목 읽기 전용)과 회원 본인 문의 접수·조회가 구현되어 있으며 공지 작성과 문의 답변·상태 변경은 이후 관리자 기능에서 제공한다. 사진·댓글·회원 신고 접수와 본인 신고 처리 상태 조회가 구현되어 있으며 신고는 서비스 운영자만 처리하고 알림·자동 숨김은 없다. 회원 개인 차단(나에게만 숨김)이 구현되어 있으며 차단한 회원의 사진·댓글·반응·알림은 차단한 사람에게만 숨겨지고 멤버십·역할은 바뀌지 않는다."
   },
   "tags": [
     {
@@ -29,6 +29,18 @@
     },
     {
       "name": "web-push"
+    },
+    {
+      "name": "notices"
+    },
+    {
+      "name": "inquiries"
+    },
+    {
+      "name": "reports"
+    },
+    {
+      "name": "blocks"
     }
   ],
   "paths": {
@@ -2733,7 +2745,7 @@
       "get": {
         "operationId": "listGroupAlbums",
         "summary": "참여한 그룹의 앨범 목록",
-        "description": "ACTIVE 사용자와 ACTIVE 그룹 멤버십을 확인하고, 삭제되지 않은 앨범을 DB에서 조회한다. 그룹이 없거나 멤버십이 없으면 GROUP_NOT_FOUND 404. 이메일 확인 전에도 그룹 조회 권한이 있으면 호출할 수 있다. 최근 생성 순 최대 50개이며 현재 페이지네이션은 없다.",
+        "description": "ACTIVE 사용자와 ACTIVE 그룹 멤버십을 확인하고, 삭제되지 않은 앨범을 DB에서 조회한다. 그룹이 없거나 멤버십이 없으면 GROUP_NOT_FOUND 404. 이메일 확인 전에도 그룹 조회 권한이 있으면 호출할 수 있다. 최근 생성 순 최대 50개이며 현재 페이지네이션은 없다. photoCount와 coverPhotoId는 조회자가 차단한 회원의 사진을 제외한다.",
         "security": [
           {
             "ProductionSession": []
@@ -3045,7 +3057,7 @@
       "get": {
         "operationId": "listAlbumPhotos",
         "summary": "앨범 사진 목록",
-        "description": "현재 활성 멤버에게 READY 사진만 생성일·ID 내림차순으로 반환한다. cursor는 직전 페이지 마지막 사진 ID이며 다른 앨범/그룹 커서는 거절한다.",
+        "description": "현재 활성 멤버에게 READY 사진만 생성일·ID 내림차순으로 반환한다. cursor는 직전 페이지 마지막 사진 ID이며 다른 앨범/그룹 커서는 거절한다. 조회자가 차단한 회원의 사진은 제외된다. cursor 사진이 삭제되었거나 그 업로더를 차단해 더 이상 보이지 않으면 기존과 같이 404 PHOTO_NOT_FOUND 후 처음부터 재조회한다. 각 사진에 uploader가 포함된다.",
         "security": [
           {
             "ProductionSession": []
@@ -3786,7 +3798,7 @@
       "get": {
         "operationId": "getPhotoContent",
         "summary": "권한 확인 후 사진 바이트 조회",
-        "description": "현재 ACTIVE 그룹 멤버십과 그룹·앨범·사진 관계를 확인한다. 장기 공개 URL/서명 GET URL은 발급하지 않는다. original은 원본 EXIF/GPS를 포함할 수 있으며 attachment로 전송한다. display/thumbnail은 방향 보정 및 메타데이터 제거된 WebP. 브라우저는 세션을 포함한 fetch→Blob으로 표시하고 세션 변경 시 Blob URL을 해제한다.",
+        "description": "현재 ACTIVE 그룹 멤버십과 그룹·앨범·사진 관계를 확인한다. 장기 공개 URL/서명 GET URL은 발급하지 않는다. original은 원본 EXIF/GPS를 포함할 수 있으며 attachment로 전송한다. display/thumbnail은 방향 보정 및 메타데이터 제거된 WebP. 브라우저는 세션을 포함한 fetch→Blob으로 표시하고 세션 변경 시 Blob URL을 해제한다. 조회자가 업로더를 차단한 사진은 저장소 조회 전후 모두 404 PHOTO_NOT_FOUND.",
         "security": [
           {
             "ProductionSession": []
@@ -4116,7 +4128,7 @@
         },
         "operationId": "renameGroupAlbum",
         "summary": "앨범 제목 수정",
-        "description": "현재 ACTIVE 그룹장만 수정한다. 제목은 공백 제거 후 1~160자.",
+        "description": "현재 ACTIVE 그룹장만 수정한다. 제목은 공백 제거 후 1~160자. photoCount와 coverPhotoId는 조회자가 차단한 회원의 사진을 제외한다.",
         "parameters": [
           {
             "name": "groupId",
@@ -4434,7 +4446,7 @@
         },
         "operationId": "deleteAlbumPhoto",
         "summary": "사진 삭제",
-        "description": "현재 ACTIVE 그룹장 또는 업로더만 삭제한다. 동일 권한의 재요청은 204. 삭제한 앨범 아래 사진은 404. 즉시 조회를 차단하고 용량을 한 번만 차감한다. 원본과 모든 변환본·staging 정리를 영속 큐에 기록한다.",
+        "description": "현재 ACTIVE 그룹장 또는 업로더만 삭제한다. 동일 권한의 재요청은 204. 삭제한 앨범 아래 사진은 404. 즉시 조회를 차단하고 용량을 한 번만 차감한다. 원본과 모든 변환본·staging 정리를 영속 큐에 기록한다. 조회자가 업로더를 차단한 사진은 그룹장이어도 404 PHOTO_NOT_FOUND(앨범 삭제는 기존대로 모든 사진을 삭제한다).",
         "parameters": [
           {
             "name": "groupId",
@@ -4552,11 +4564,12 @@
             }
           }
         },
-        "description": "createdAt 내림차순, id 내림차순. 커서는 동일 사진의 댓글 ID이며 삭제된 댓글도 이어보기 기준으로 사용할 수 있다. 좌표는 EXIF 방향 처리 후 전체 사진 기준 0~1 비율이다."
+        "description": "createdAt 내림차순, id 내림차순. 커서는 동일 사진의 댓글 ID이며 삭제된 댓글도 이어보기 기준으로 사용할 수 있다. 좌표는 EXIF 방향 처리 후 전체 사진 기준 0~1 비율이다. 조회자가 업로더를 차단한 사진은 404 PHOTO_NOT_FOUND. 조회자가 차단한 회원의 댓글은 목록·cursor 페이지·total에서 모두 제외된다."
       },
       "post": {
         "operationId": "createPhotoComment",
         "summary": "일반 또는 위치 댓글 작성",
+        "description": "조회자가 업로더를 차단한 사진은 404 PHOTO_NOT_FOUND.",
         "tags": ["photo-interactions"],
         "security": [
           {
@@ -4640,6 +4653,7 @@
       "patch": {
         "operationId": "editPhotoComment",
         "summary": "작성자 댓글 본문 수정",
+        "description": "조회자가 업로더를 차단한 사진은 404 PHOTO_NOT_FOUND.",
         "tags": ["photo-interactions"],
         "security": [
           {
@@ -4730,6 +4744,7 @@
       "delete": {
         "operationId": "deletePhotoComment",
         "summary": "작성자 또는 그룹장 댓글 삭제",
+        "description": "조회자가 업로더를 차단한 사진은 404 PHOTO_NOT_FOUND.",
         "tags": ["photo-interactions"],
         "security": [
           {
@@ -4805,6 +4820,7 @@
       "get": {
         "operationId": "getPhotoReactions",
         "summary": "사진 반응 집계와 내 반응",
+        "description": "조회자가 업로더를 차단한 사진은 404 PHOTO_NOT_FOUND. 반응 집계(reactions, total)는 조회자가 차단한 회원의 반응을 제외한다(myReaction은 영향 없음).",
         "tags": ["photo-interactions"],
         "security": [
           {
@@ -4867,6 +4883,7 @@
       "put": {
         "operationId": "setPhotoReaction",
         "summary": "내 반응 선택 또는 교체",
+        "description": "조회자가 업로더를 차단한 사진은 404 PHOTO_NOT_FOUND. 반응 집계(reactions, total)는 조회자가 차단한 회원의 반응을 제외한다(myReaction은 영향 없음).",
         "tags": ["photo-interactions"],
         "security": [
           {
@@ -4948,6 +4965,7 @@
       "delete": {
         "operationId": "deletePhotoReaction",
         "summary": "내 반응 해제 (이미 없으면 유지)",
+        "description": "조회자가 업로더를 차단한 사진은 404 PHOTO_NOT_FOUND. 반응 집계(reactions, total)는 조회자가 차단한 회원의 반응을 제외한다(myReaction은 영향 없음).",
         "tags": ["photo-interactions"],
         "security": [
           {
@@ -5021,6 +5039,7 @@
       "get": {
         "operationId": "listNotifications",
         "summary": "현재 접근 가능한 알림과 읽지 않은 개수",
+        "description": "수신자가 차단한 회원이 일으킨 알림과, 수신자가 업로더를 차단한 사진에 대한 알림은 목록과 unreadCount에서 모두 제외된다.",
         "tags": ["notifications"],
         "security": [
           {
@@ -5094,6 +5113,7 @@
       "get": {
         "operationId": "getNotificationTarget",
         "summary": "수신자와 현재 대상 권한 재검증",
+        "description": "수신자가 차단한 회원이 일으킨 알림은 404 NOTIFICATION_NOT_FOUND. uploader는 대상 사진을 올린 회원이며 행위자와 다를 수 있다. 수신자가 그 업로더를 차단했으면 사진이 보이지 않으므로 이 알림도 목록에서 빠지고 404다.",
         "tags": ["notifications"],
         "security": [
           {
@@ -5158,6 +5178,7 @@
       "patch": {
         "operationId": "readNotification",
         "summary": "확인한 알림 시퀀스까지 읽음",
+        "description": "수신자가 차단한 회원이 일으킨 알림은 404 NOTIFICATION_NOT_FOUND.",
         "tags": ["notifications"],
         "security": [
           {
@@ -5244,6 +5265,7 @@
       "post": {
         "operationId": "readObservedNotifications",
         "summary": "전달한 알림만 일괄 읽음, 새 도착 알림 보존",
+        "description": "수신자가 차단한 회원이 일으킨 알림은 404 NOTIFICATION_NOT_FOUND.",
         "tags": ["notifications"],
         "security": [
           {
@@ -5790,7 +5812,7 @@
             }
           }
         },
-        "description": "서비스워커는 opaque 푸시 수신 시 credentials: include로 요청한다. 세션·설정·읽음·그룹·대상·구독 버전을 다시 확인하며 거부되면 OS 알림을 표시하지 않는다. 푸시 수신은 provider acceptance와 다르며 전송은 ACK 손실 시 중복될 수 있다."
+        "description": "서비스워커는 opaque 푸시 수신 시 credentials: include로 요청한다. 세션·설정·읽음·그룹·대상·구독 버전을 다시 확인하며 거부되면 OS 알림을 표시하지 않는다. 푸시 수신은 provider acceptance와 다르며 전송은 ACK 손실 시 중복될 수 있다. 수신자가 차단한 회원이 일으킨 알림은 404."
       }
     },
     "/v1/auth/recovery/username": {
@@ -6361,7 +6383,7 @@
       "get": {
         "operationId": "listGroupMembers",
         "summary": "활성 그룹 구성원 조회",
-        "description": "현재 활성 멤버에게 이름·역할·가입 시각만 반환한다. 이메일·로그인 ID는 제공하지 않는다. userId 오름차순 keyset 페이지이며 after는 마지막 userId로, 해당 회원이 떠난 뒤에도 다음 페이지를 조회할 수 있다.",
+        "description": "현재 활성 멤버에게 이름·역할·가입 시각만 반환한다. 이메일·로그인 ID는 제공하지 않는다. userId 오름차순 keyset 페이지이며 after는 마지막 userId로, 해당 회원이 떠난 뒤에도 다음 페이지를 조회할 수 있다. 조회자가 차단한 회원도 목록에 남으며 blockedByMe=true로 표시된다(조회자 본인의 차단만 반영).",
         "tags": ["groups"],
         "security": [
           {
@@ -7069,7 +7091,7 @@
       "get": {
         "operationId": "listPhotoMemories",
         "summary": "현재 그룹의 내 추억 조회",
-        "description": "서버 KST(UTC+09:00 고정) 오늘 기준. today는 이전 연도 같은 월일이며 평년 2월 28일에는 과거 2월 29일도 포함. month는 이전 연도 같은 달 중 today 후보 제외. hidden은 날짜와 무관한 본인 숨김 사진. 활성 멤버·그룹·앨범과 READY 사진만 반환. 개인 숨김은 앨범/다른 멤버에 영향 없음. effectiveDate DESC,id DESC 정렬. 커서는 같은 필터에서 여전히 보이는 사진 ID여야 하며 상태 변경 시 404 후 처음부터 재조회. 촬영일/숨김 변경 후 커서를 초기화한다. 추억 푸시 발송 없음.",
+        "description": "서버 KST(UTC+09:00 고정) 오늘 기준. today는 이전 연도 같은 월일이며 평년 2월 28일에는 과거 2월 29일도 포함. month는 이전 연도 같은 달 중 today 후보 제외. hidden은 날짜와 무관한 본인 숨김 사진. 활성 멤버·그룹·앨범과 READY 사진만 반환. 개인 숨김은 앨범/다른 멤버에 영향 없음. effectiveDate DESC,id DESC 정렬. 커서는 같은 필터에서 여전히 보이는 사진 ID여야 하며 상태 변경 시 404 후 처음부터 재조회. 촬영일/숨김 변경 후 커서를 초기화한다. 추억 푸시 발송 없음. 조회자가 차단한 회원의 사진은 today·month·hidden 모두와 cursor에서 제외된다. 각 photo에 uploader가 포함된다.",
         "tags": ["photos"],
         "security": [
           {
@@ -7258,7 +7280,7 @@
       "put": {
         "operationId": "hidePhotoMemory",
         "summary": "내 추억에서 사진 숨김",
-        "description": "세션 본인에게만 적용. 활성 멤버는 다른 멤버가 올린 사진도 자신의 추억에서 숨길 수 있다. 중복 요청은 멱등적이며 사진 원본·앨범·댓글은 변경하지 않는다.",
+        "description": "세션 본인에게만 적용. 활성 멤버는 다른 멤버가 올린 사진도 자신의 추억에서 숨길 수 있다. 중복 요청은 멱등적이며 사진 원본·앨범·댓글은 변경하지 않는다. 조회자가 업로더를 차단한 사진은 404 PHOTO_NOT_FOUND.",
         "tags": ["photos"],
         "security": [
           {
@@ -7426,7 +7448,7 @@
       "delete": {
         "operationId": "restorePhotoMemory",
         "summary": "숨긴 추억 사진 다시 표시",
-        "description": "세션 본인에게만 적용. 활성 멤버는 다른 멤버가 올린 사진도 자신의 추억에서 숨길 수 있다. 중복 요청은 멱등적이며 사진 원본·앨범·댓글은 변경하지 않는다.",
+        "description": "세션 본인에게만 적용. 활성 멤버는 다른 멤버가 올린 사진도 자신의 추억에서 숨길 수 있다. 중복 요청은 멱등적이며 사진 원본·앨범·댓글은 변경하지 않는다. 조회자가 업로더를 차단한 사진은 404 PHOTO_NOT_FOUND.",
         "tags": ["photos"],
         "security": [
           {
@@ -7596,7 +7618,7 @@
       "patch": {
         "operationId": "updatePhotoCaptureDate",
         "summary": "사진 촬영일 수정·복원",
-        "description": "현재 활성 그룹장 또는 업로더만 수정. 수동 날짜는 별도 DATE 필드에 저장해 EXIF와 독립적으로 유지. 백필은 수동 날짜를 덮어쓰지 않는다. EXIF offset 없으면 UTC+09:00 가정. 원본/GPS/파일은 수정하지 않는다.",
+        "description": "현재 활성 그룹장 또는 업로더만 수정. 수동 날짜는 별도 DATE 필드에 저장해 EXIF와 독립적으로 유지. 백필은 수동 날짜를 덮어쓰지 않는다. EXIF offset 없으면 UTC+09:00 가정. 원본/GPS/파일은 수정하지 않는다. 조회자가 업로더를 차단한 사진은 404 PHOTO_NOT_FOUND.",
         "tags": ["photos"],
         "security": [
           {
@@ -8698,7 +8720,7 @@
       "post": {
         "operationId": "deleteAccount",
         "summary": "회원 탈퇴",
-        "description": "현재 비밀번호와 확인 문구 탈퇴를 요구한다. ACTIVE 소유 그룹이 있으면 거절하며 그룹장 이전 또는 그룹 삭제 접수 후 가능하다. 그룹/멤버십/사용자/세션 잠금 안에서 자격을 재검사한다. 개인정보·세션·푸시 구독·이메일 토큰·본인 알림·개인 설정을 즉시 제거하고 복구할 수 없다. 공유 READY 사진·앨범·댓글·반응은 유지하며 작성자는 탈퇴한 회원으로 표시한다. 원본 EXIF 및 콘텐츠에 직접 포함된 정보는 남는다. 미완료 업로드는 기존 R2 정리 큐에 접수한다. 같은 아이디·이메일로 새 계정을 만들 수 있으나 기존 그룹 접근은 복원되지 않는다. 처리 중 다른 그룹 변경과 충돌하면 제한 횟수 재시도 후 409를 반환한다.",
+        "description": "현재 비밀번호와 확인 문구 탈퇴를 요구한다. ACTIVE 소유 그룹이 있으면 거절하며 그룹장 이전 또는 그룹 삭제 접수 후 가능하다. 그룹/멤버십/사용자/세션 잠금 안에서 자격을 재검사한다. 개인정보·세션·푸시 구독·이메일 토큰·본인 알림·개인 설정·본인 문의를 즉시 제거하고 복구할 수 없다. 본인이 접수한 신고는 대상·사유·처리 상태만 익명으로 남기고 상세 내용(detail)은 즉시 지운다. 다른 회원이 이 계정을 대상으로 접수한 신고는 유지한다. 본인이 설정한 차단은 삭제하고 다른 회원이 이 계정에 설정한 차단은 유지해 남은 공유 콘텐츠도 계속 숨겨진다. 공유 READY 사진·앨범·댓글·반응은 유지하며 작성자는 탈퇴한 회원으로 표시한다. 원본 EXIF 및 콘텐츠에 직접 포함된 정보는 남는다. 미완료 업로드는 기존 R2 정리 큐에 접수한다. 같은 아이디·이메일로 새 계정을 만들 수 있으나 기존 그룹 접근은 복원되지 않는다. 처리 중 다른 그룹 변경과 충돌하면 제한 횟수 재시도 후 409를 반환한다.",
         "security": [
           {
             "ProductionSession": []
@@ -8864,6 +8886,722 @@
           }
         },
         "tags": ["authentication"]
+      }
+    },
+    "/v1/notices": {
+      "get": {
+        "operationId": "listNotices",
+        "summary": "게시된 공지사항 목록",
+        "description": "status=PUBLISHED이고 publishedAt이 현재 시각 이전인 공지만 반환한다. 초안·보관·예약 공지는 보이지 않는다. publishedAt DESC, id DESC 정렬. 커서는 여전히 보이는 공지 id여야 하며 아니면 404 후 처음부터 재조회한다. 활성 회원 세션이 필요하고 이메일 인증은 요구하지 않는다. 회원용 공지 작성·수정 API는 없다.",
+        "tags": ["notices"],
+        "security": [
+          {
+            "ProductionSession": []
+          },
+          {
+            "DevelopmentSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "이전 응답의 nextCursor(마지막 항목 id). 생략하면 처음부터 조회한다.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoticePage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ServiceSupportError400"
+          },
+          "401": {
+            "$ref": "#/components/responses/ServiceSupportError401"
+          },
+          "404": {
+            "$ref": "#/components/responses/NoticeError404"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServiceSupportError500"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceSupportError503"
+          }
+        }
+      }
+    },
+    "/v1/notices/{noticeId}": {
+      "get": {
+        "operationId": "getNotice",
+        "summary": "게시된 공지사항 상세",
+        "description": "목록과 같은 공개 조건을 적용한다. 초안·보관·예약·존재하지 않는 공지는 모두 NOTICE_NOT_FOUND.",
+        "tags": ["notices"],
+        "security": [
+          {
+            "ProductionSession": []
+          },
+          {
+            "DevelopmentSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "noticeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Notice"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ServiceSupportError400"
+          },
+          "401": {
+            "$ref": "#/components/responses/ServiceSupportError401"
+          },
+          "404": {
+            "$ref": "#/components/responses/NoticeError404"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServiceSupportError500"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceSupportError503"
+          }
+        }
+      }
+    },
+    "/v1/inquiries": {
+      "get": {
+        "operationId": "listInquiries",
+        "summary": "내 문의 목록",
+        "description": "현재 회원 본인의 문의만 createdAt DESC, id DESC로 반환한다. 본문과 답변은 상세에서 조회한다. 커서는 본인 문의 id여야 하며 아니면 INQUIRY_NOT_FOUND. 이메일 인증은 요구하지 않는다.",
+        "tags": ["inquiries"],
+        "security": [
+          {
+            "ProductionSession": []
+          },
+          {
+            "DevelopmentSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "이전 응답의 nextCursor(마지막 항목 id). 생략하면 처음부터 조회한다.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InquiryPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ServiceSupportError400"
+          },
+          "401": {
+            "$ref": "#/components/responses/ServiceSupportError401"
+          },
+          "404": {
+            "$ref": "#/components/responses/InquiryError404"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServiceSupportError500"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceSupportError503"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createInquiry",
+        "summary": "문의 접수",
+        "description": "제목·본문은 앞뒤 공백을 제거한 뒤 검사·저장한다. 길이는 유니코드 코드 포인트 기준이다. 제목은 모든 제어 문자, 본문은 탭·LF·CR을 제외한 제어 문자를 거절한다. 저장된 문의 기준으로 회원별 최근 24시간 5건까지 접수하며 검증 실패·한도 초과 요청은 횟수에 포함하지 않는다. 이메일 인증은 요구하지 않는다. 생성 상태는 항상 RECEIVED이며 답변·상태 변경·삭제 API는 없다. 회원 탈퇴 시 본인 문의는 즉시 삭제된다.",
+        "tags": ["inquiries"],
+        "security": [
+          {
+            "ProductionSession": []
+          },
+          {
+            "DevelopmentSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/WooriRequest"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInquiryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "접수 완료",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Inquiry"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ServiceSupportError400"
+          },
+          "401": {
+            "$ref": "#/components/responses/ServiceSupportError401"
+          },
+          "403": {
+            "$ref": "#/components/responses/ServiceSupportError403"
+          },
+          "429": {
+            "$ref": "#/components/responses/ServiceSupportError429"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServiceSupportError500"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceSupportError503"
+          }
+        }
+      }
+    },
+    "/v1/inquiries/{inquiryId}": {
+      "get": {
+        "operationId": "getInquiry",
+        "summary": "내 문의 상세",
+        "description": "본인 문의만 조회한다. 다른 회원의 문의와 존재하지 않는 문의는 구분하지 않고 INQUIRY_NOT_FOUND.",
+        "tags": ["inquiries"],
+        "security": [
+          {
+            "ProductionSession": []
+          },
+          {
+            "DevelopmentSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "inquiryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Inquiry"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ServiceSupportError400"
+          },
+          "401": {
+            "$ref": "#/components/responses/ServiceSupportError401"
+          },
+          "404": {
+            "$ref": "#/components/responses/InquiryError404"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServiceSupportError500"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceSupportError503"
+          }
+        }
+      }
+    },
+    "/v1/reports": {
+      "get": {
+        "operationId": "listReports",
+        "summary": "내 신고 처리 상태 목록",
+        "description": "본인이 접수한 신고만 createdAt DESC, id DESC로 반환한다. 접근 권한을 잃은 뒤에도 노출되지 않도록 대상 콘텐츠와 상세 내용은 반환하지 않는다. 커서는 본인 신고 id여야 하며 아니면 REPORT_NOT_FOUND. 이메일 인증은 요구하지 않는다.",
+        "tags": ["reports"],
+        "security": [
+          {
+            "ProductionSession": []
+          },
+          {
+            "DevelopmentSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "이전 응답의 nextCursor(마지막 항목 id). 생략하면 처음부터 조회한다.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ReportError400"
+          },
+          "401": {
+            "$ref": "#/components/responses/ServiceSupportError401"
+          },
+          "404": {
+            "$ref": "#/components/responses/ReportError404"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServiceSupportError500"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceSupportError503"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createReport",
+        "summary": "사진·댓글·회원 신고 접수",
+        "description": "신고는 서비스 운영자만 처리한다. 그룹장·신고 대상·다른 회원에게 알림을 보내지 않고 콘텐츠를 자동으로 숨기지 않는다. 차단은 별도 기능이다. PHOTO는 활성 그룹의 현재 활성 멤버가 볼 수 있는 READY·미삭제 사진(미삭제 앨범)만 대상이며 groupId는 사진에서 정한다. COMMENT는 같은 조건의 사진에 있는 미삭제 댓글이 대상이다. 두 경우 groupId를 보내면 대상 그룹과 일치해야 한다. USER는 groupId가 필수이며 신고자와 대상이 모두 그 활성 그룹의 활성 멤버여야 한다. 접근할 수 없거나 없는 대상은 구분 없이 404. 같은 신고자가 같은 대상을 다시 신고하면 기존 기록을 200으로 그대로 반환하며 사유·상세는 바뀌지 않는다. 저장된 신규 신고만 회원별 최근 24시간 20건 한도에 포함된다. 이메일 인증은 요구하지 않는다. 회원은 신고 상세 조회·취소·상태 변경을 할 수 없다. 신고자가 탈퇴하면 신고 기록은 익명으로 남고 detail만 삭제된다. 조회자가 업로더·작성자를 차단한 사진·댓글은 보이지 않으므로 404 REPORT_TARGET_NOT_FOUND(차단한 회원 자체에 대한 USER 신고는 가능).",
+        "tags": ["reports"],
+        "security": [
+          {
+            "ProductionSession": []
+          },
+          {
+            "DevelopmentSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/WooriRequest"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "같은 대상에 이미 접수한 신고. 기존 기록을 변경 없이 반환하며 duplicate=true.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportResult"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "신규 접수. duplicate=false.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ReportError400"
+          },
+          "401": {
+            "$ref": "#/components/responses/ServiceSupportError401"
+          },
+          "403": {
+            "$ref": "#/components/responses/ServiceSupportError403"
+          },
+          "404": {
+            "$ref": "#/components/responses/ReportError404"
+          },
+          "429": {
+            "$ref": "#/components/responses/ReportError429"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServiceSupportError500"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceSupportError503"
+          }
+        }
+      }
+    },
+    "/v1/blocks": {
+      "get": {
+        "operationId": "listBlocks",
+        "summary": "내 차단 목록",
+        "description": "내가 차단한 회원을 차단 시각 최신순(blockedAt DESC, userId DESC)으로 반환한다. displayName은 현재 서버 이름이며 탈퇴한 계정은 '탈퇴한 회원'이다. cursor는 이전 응답의 nextCursor(마지막 항목 userId)이며 그 회원이 더 이상 차단 목록에 없으면 404 USER_NOT_FOUND 후 처음부터 재조회한다. 이메일 인증은 요구하지 않는다.",
+        "tags": ["blocks"],
+        "security": [
+          {
+            "ProductionSession": []
+          },
+          {
+            "DevelopmentSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "이전 응답의 nextCursor(마지막 항목 userId).",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BlockError400"
+          },
+          "401": {
+            "$ref": "#/components/responses/ServiceSupportError401"
+          },
+          "404": {
+            "$ref": "#/components/responses/BlockError404"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServiceSupportError500"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceSupportError503"
+          }
+        }
+      }
+    },
+    "/v1/blocks/{userId}": {
+      "put": {
+        "operationId": "blockUser",
+        "summary": "회원 차단(나에게만 숨김)",
+        "description": "한 방향 개인 차단이다. 차단한 회원의 사진(앨범 사진 수·대표 사진·추억 포함), 일반·위치 댓글(총수 포함), 반응 집계와 그 회원이 일으킨 알림·웹 푸시가 나에게만 숨겨진다. 상대에게 알리지 않으며 상대의 화면·권한·그룹 멤버십·역할은 바뀌지 않는다(그룹장 내보내기와 다름). 차단할 때 상대가 일으킨 나의 기존 알림(발송 대기 푸시 포함)을 삭제하며 차단을 해제해도 복원하지 않는다. 대상은 지금 함께 활성 그룹의 활성 멤버이거나, 내가 활성 멤버인 활성 그룹에 남아 있는 READY 사진·삭제되지 않은 댓글·READY 사진 반응의 작성자(탈퇴하거나 나간 회원 포함)여야 하며 아니면 존재 여부를 구분하지 않고 404 USER_NOT_FOUND. 이미 차단한 회원이면 기존 blockedAt을 그대로 200으로 반환한다. 회원당 최대 500명. 차단·해제 요청은 회원당 1시간 단위 고정 창에서 60회까지이며 404를 포함한 모든 요청을 센다. 이메일 인증은 요구하지 않는다.",
+        "tags": ["blocks"],
+        "security": [
+          {
+            "ProductionSession": []
+          },
+          {
+            "DevelopmentSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "차단 대상 회원 id."
+          },
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/WooriRequest"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "차단됨(이미 차단한 경우 기존 기록).",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockedUser"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BlockError400"
+          },
+          "401": {
+            "$ref": "#/components/responses/ServiceSupportError401"
+          },
+          "403": {
+            "$ref": "#/components/responses/ServiceSupportError403"
+          },
+          "404": {
+            "$ref": "#/components/responses/BlockError404"
+          },
+          "409": {
+            "$ref": "#/components/responses/BlockError409"
+          },
+          "429": {
+            "$ref": "#/components/responses/BlockError429"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServiceSupportError500"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceSupportError503"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "unblockUser",
+        "summary": "회원 차단 해제",
+        "description": "콘텐츠 표시만 복원되고 차단 때 삭제한 알림은 복원되지 않는다. 차단과 동시에 생성되어 남은 상대의 알림도 해제하는 같은 트랜잭션에서 삭제한다. 차단하지 않은 회원이면 아무것도 지우지 않고 204(멱등). 본인은 대소문자와 무관하게 400 BLOCK_SELF_NOT_ALLOWED.",
+        "tags": ["blocks"],
+        "security": [
+          {
+            "ProductionSession": []
+          },
+          {
+            "DevelopmentSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "차단 대상 회원 id."
+          },
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/WooriRequest"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "해제됨 또는 원래 차단하지 않음."
+          },
+          "400": {
+            "$ref": "#/components/responses/BlockError400"
+          },
+          "401": {
+            "$ref": "#/components/responses/ServiceSupportError401"
+          },
+          "403": {
+            "$ref": "#/components/responses/ServiceSupportError403"
+          },
+          "429": {
+            "$ref": "#/components/responses/BlockError429"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServiceSupportError500"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceSupportError503"
+          }
+        }
       }
     }
   },
@@ -9441,7 +10179,8 @@
           "canDelete",
           "effectiveDate",
           "dateSource",
-          "canEditCaptureDate"
+          "canEditCaptureDate",
+          "uploader"
         ],
         "properties": {
           "id": {
@@ -9491,6 +10230,9 @@
           "canEditCaptureDate": {
             "type": "boolean",
             "description": "현재 활성 그룹장 또는 업로더만 촬영일 수정 가능."
+          },
+          "uploader": {
+            "$ref": "#/components/schemas/PhotoUploader"
           }
         }
       },
@@ -9895,6 +10637,9 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "uploader": {
+            "$ref": "#/components/schemas/PhotoUploader"
+          },
           "groupId": {
             "type": "string",
             "format": "uuid"
@@ -9921,7 +10666,8 @@
           "albumId",
           "photoId",
           "commentId",
-          "latestSequence"
+          "latestSequence",
+          "uploader"
         ]
       },
       "ReadNotification": {
@@ -10308,7 +11054,13 @@
       "GroupMember": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["userId", "displayName", "role", "joinedAt"],
+        "required": [
+          "userId",
+          "displayName",
+          "role",
+          "joinedAt",
+          "blockedByMe"
+        ],
         "properties": {
           "userId": {
             "type": "string",
@@ -10324,6 +11076,10 @@
           "joinedAt": {
             "type": ["string", "null"],
             "format": "date-time"
+          },
+          "blockedByMe": {
+            "type": "boolean",
+            "description": "조회자 본인이 이 회원을 차단했는지. 차단해도 멤버십·역할은 바뀌지 않는다."
           }
         }
       },
@@ -10564,6 +11320,429 @@
             "type": "boolean"
           }
         }
+      },
+      "NoticeSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "publishedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["id", "title", "publishedAt", "updatedAt"]
+      },
+      "Notice": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 10000
+          },
+          "publishedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["id", "title", "body", "publishedAt", "updatedAt"]
+      },
+      "NoticePage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "$ref": "#/components/schemas/NoticeSummary"
+            }
+          },
+          "nextCursor": {
+            "type": ["string", "null"],
+            "format": "uuid"
+          }
+        },
+        "required": ["items", "nextCursor"]
+      },
+      "InquirySummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "ACCOUNT",
+              "GROUP",
+              "PHOTO",
+              "NOTIFICATION",
+              "BUG",
+              "OTHER"
+            ],
+            "description": "ACCOUNT(계정), GROUP(그룹), PHOTO(사진), NOTIFICATION(알림), BUG(오류 신고), OTHER(기타)."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "status": {
+            "type": "string",
+            "enum": ["RECEIVED", "IN_PROGRESS", "ANSWERED", "CLOSED"],
+            "description": "RECEIVED(접수), IN_PROGRESS(확인 중), ANSWERED(답변 완료), CLOSED(종료). 회원 API는 RECEIVED로만 생성하며 상태·답변은 이후 관리자 기능에서 변경한다."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "answeredAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "category",
+          "title",
+          "status",
+          "createdAt",
+          "answeredAt"
+        ]
+      },
+      "Inquiry": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "ACCOUNT",
+              "GROUP",
+              "PHOTO",
+              "NOTIFICATION",
+              "BUG",
+              "OTHER"
+            ],
+            "description": "ACCOUNT(계정), GROUP(그룹), PHOTO(사진), NOTIFICATION(알림), BUG(오류 신고), OTHER(기타)."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "type": "string",
+            "enum": ["RECEIVED", "IN_PROGRESS", "ANSWERED", "CLOSED"],
+            "description": "RECEIVED(접수), IN_PROGRESS(확인 중), ANSWERED(답변 완료), CLOSED(종료). 회원 API는 RECEIVED로만 생성하며 상태·답변은 이후 관리자 기능에서 변경한다."
+          },
+          "answer": {
+            "type": ["string", "null"],
+            "maxLength": 4000,
+            "description": "관리자 답변. 답변 전에는 null."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "answeredAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "category",
+          "title",
+          "body",
+          "status",
+          "answer",
+          "createdAt",
+          "answeredAt"
+        ]
+      },
+      "InquiryPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "$ref": "#/components/schemas/InquirySummary"
+            }
+          },
+          "nextCursor": {
+            "type": ["string", "null"],
+            "format": "uuid"
+          }
+        },
+        "required": ["items", "nextCursor"]
+      },
+      "CreateInquiryRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "ACCOUNT",
+              "GROUP",
+              "PHOTO",
+              "NOTIFICATION",
+              "BUG",
+              "OTHER"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "앞뒤 공백을 제거한 뒤 유니코드 코드 포인트 기준 1~100자. 줄바꿈·탭을 포함한 제어 문자, 양방향 서식 제어 문자(U+202A–U+202E, U+2066–U+2069), 줄·문단 구분자(U+2028, U+2029)는 사용할 수 없다."
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "앞뒤 공백을 제거한 뒤 유니코드 코드 포인트 기준 1~2000자. 탭·LF·CR 외 제어 문자와 양방향 서식 제어 문자(U+202A–U+202E, U+2066–U+2069)는 사용할 수 없다."
+          }
+        },
+        "required": ["category", "title", "body"]
+      },
+      "CreateReportRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "targetType": {
+            "type": "string",
+            "enum": ["PHOTO", "COMMENT", "USER"],
+            "description": "PHOTO(사진), COMMENT(댓글), USER(같은 그룹 회원)."
+          },
+          "targetId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "사진 id, 댓글 id 또는 회원 id."
+          },
+          "groupId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "USER 신고에는 필수. PHOTO/COMMENT는 생략할 수 있으며 보내면 대상 그룹과 일치해야 한다."
+          },
+          "reason": {
+            "type": "string",
+            "enum": ["INAPPROPRIATE", "HARASSMENT", "PRIVACY", "SPAM", "OTHER"],
+            "description": "INAPPROPRIATE(부적절한 콘텐츠), HARASSMENT(괴롭힘), PRIVACY(개인정보 노출), SPAM(스팸), OTHER(기타)."
+          },
+          "detail": {
+            "type": ["string", "null"],
+            "maxLength": 500,
+            "description": "선택. 앞뒤 공백을 제거한 뒤 유니코드 코드 포인트 기준 0~500자이며 빈 값은 null로 저장한다. 탭·LF·CR 외 제어 문자와 양방향 서식 제어 문자(U+202A–U+202E, U+2066–U+2069)는 사용할 수 없다."
+          }
+        },
+        "required": ["targetType", "targetId", "reason"],
+        "if": {
+          "properties": {
+            "targetType": {
+              "const": "USER"
+            }
+          }
+        },
+        "then": {
+          "required": ["groupId"]
+        }
+      },
+      "ReportSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "targetType": {
+            "type": "string",
+            "enum": ["PHOTO", "COMMENT", "USER"],
+            "description": "PHOTO(사진), COMMENT(댓글), USER(같은 그룹 회원)."
+          },
+          "reason": {
+            "type": "string",
+            "enum": ["INAPPROPRIATE", "HARASSMENT", "PRIVACY", "SPAM", "OTHER"],
+            "description": "INAPPROPRIATE(부적절한 콘텐츠), HARASSMENT(괴롭힘), PRIVACY(개인정보 노출), SPAM(스팸), OTHER(기타)."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["RECEIVED", "REVIEWING", "RESOLVED", "DISMISSED"],
+            "description": "RECEIVED(접수), REVIEWING(검토 중), RESOLVED(조치 완료), DISMISSED(조치 없이 종료). 회원 API는 RECEIVED로만 생성하며 상태는 이후 운영자 관리자 기능에서 변경한다."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "resolvedAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "targetType",
+          "reason",
+          "status",
+          "createdAt",
+          "resolvedAt"
+        ]
+      },
+      "ReportResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "targetType": {
+            "type": "string",
+            "enum": ["PHOTO", "COMMENT", "USER"],
+            "description": "PHOTO(사진), COMMENT(댓글), USER(같은 그룹 회원)."
+          },
+          "reason": {
+            "type": "string",
+            "enum": ["INAPPROPRIATE", "HARASSMENT", "PRIVACY", "SPAM", "OTHER"],
+            "description": "INAPPROPRIATE(부적절한 콘텐츠), HARASSMENT(괴롭힘), PRIVACY(개인정보 노출), SPAM(스팸), OTHER(기타)."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["RECEIVED", "REVIEWING", "RESOLVED", "DISMISSED"],
+            "description": "RECEIVED(접수), REVIEWING(검토 중), RESOLVED(조치 완료), DISMISSED(조치 없이 종료). 회원 API는 RECEIVED로만 생성하며 상태는 이후 운영자 관리자 기능에서 변경한다."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "resolvedAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "duplicate": {
+            "type": "boolean",
+            "description": "true면 이미 접수한 같은 대상 신고를 그대로 반환한 것."
+          }
+        },
+        "required": [
+          "id",
+          "targetType",
+          "reason",
+          "status",
+          "createdAt",
+          "resolvedAt",
+          "duplicate"
+        ]
+      },
+      "ReportPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "$ref": "#/components/schemas/ReportSummary"
+            }
+          },
+          "nextCursor": {
+            "type": ["string", "null"],
+            "format": "uuid"
+          }
+        },
+        "required": ["items", "nextCursor"]
+      },
+      "PhotoUploader": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "displayName"],
+        "description": "사진을 올린 회원. 탈퇴한 계정은 displayName이 '탈퇴한 회원'이다."
+      },
+      "BlockedUser": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": "string",
+            "description": "현재 서버 이름. 탈퇴한 계정은 '탈퇴한 회원'."
+          },
+          "blockedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["userId", "displayName", "blockedAt"]
+      },
+      "BlockPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "$ref": "#/components/schemas/BlockedUser"
+            }
+          },
+          "nextCursor": {
+            "type": ["string", "null"],
+            "format": "uuid"
+          }
+        },
+        "required": ["items", "nextCursor"]
       }
     },
     "responses": {
@@ -10841,6 +12020,291 @@
                 }
               },
               "required": ["code"]
+            }
+          }
+        }
+      },
+      "ServiceSupportError400": {
+        "description": "잘못된 UUID·쿼리·본문 또는 알 수 없는 필드. limit은 1~50 정수. 문의 제목·본문 길이·제어 문자·분류 오류 포함.",
+        "headers": {
+          "Cache-Control": {
+            "description": "모든 응답은 저장을 금지한다.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "ServiceSupportError401": {
+        "description": "AUTHENTICATION_REQUIRED: 유효한 활성 회원 세션 필요. 이메일 인증 여부와 무관하다.",
+        "headers": {
+          "Cache-Control": {
+            "description": "모든 응답은 저장을 금지한다.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "ServiceSupportError403": {
+        "description": "REQUEST_ORIGIN_REJECTED 또는 JSON_REQUIRED: 허용된 Origin, X-Woori-Request: 1, application/json 본문 필요.",
+        "headers": {
+          "Cache-Control": {
+            "description": "모든 응답은 저장을 금지한다.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "NoticeError404": {
+        "description": "NOTICE_NOT_FOUND: 공지가 없거나 초안·보관·예약 상태. 목록 cursor가 더 이상 보이지 않는 공지여도 404이며 처음부터 재조회한다.",
+        "headers": {
+          "Cache-Control": {
+            "description": "모든 응답은 저장을 금지한다.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "InquiryError404": {
+        "description": "INQUIRY_NOT_FOUND: 문의가 없거나 다른 회원의 문의. 목록 cursor가 본인 문의가 아니어도 404.",
+        "headers": {
+          "Cache-Control": {
+            "description": "모든 응답은 저장을 금지한다.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "ServiceSupportError429": {
+        "description": "TOO_MANY_REQUESTS: 문의 접수는 회원별 최근 24시간 5건까지(저장된 문의 기준). 공유 DB 기반 제한이며 Retry-After 헤더는 제공하지 않는다.",
+        "headers": {
+          "Cache-Control": {
+            "description": "모든 응답은 저장을 금지한다.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "ServiceSupportError500": {
+        "description": "INTERNAL_ERROR: 내부 오류 원문은 공개하지 않음.",
+        "headers": {
+          "Cache-Control": {
+            "description": "모든 응답은 저장을 금지한다.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "ServiceSupportError503": {
+        "description": "DATABASE_NOT_CONFIGURED 등 DB 이용 불가.",
+        "headers": {
+          "Cache-Control": {
+            "description": "모든 응답은 저장을 금지한다.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "ReportError400": {
+        "description": "잘못된 UUID·본문·쿼리, 알 수 없는 필드, USER 신고의 groupId 누락, detail 길이·제어 문자 오류. REPORT_SELF_NOT_ALLOWED: 본인·본인 사진·본인 댓글 신고.",
+        "headers": {
+          "Cache-Control": {
+            "description": "모든 응답은 저장을 금지한다.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "ReportError404": {
+        "description": "REPORT_TARGET_NOT_FOUND: 대상이 없거나 현재 접근할 수 없음(비멤버, 탈퇴·내보내진 멤버, 삭제된 사진·댓글·앨범, 삭제 중인 그룹, groupId 불일치를 구분하지 않음). REPORT_NOT_FOUND: 목록 cursor가 본인 신고가 아님.",
+        "headers": {
+          "Cache-Control": {
+            "description": "모든 응답은 저장을 금지한다.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "ReportError429": {
+        "description": "TOO_MANY_REQUESTS: 신규 신고는 회원별 최근 24시간 20건까지. 검증 실패·404·본인 신고·중복 신고는 횟수에 포함하지 않는다. Retry-After 헤더는 제공하지 않는다.",
+        "headers": {
+          "Cache-Control": {
+            "description": "모든 응답은 저장을 금지한다.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "BlockError400": {
+        "description": "BLOCK_SELF_NOT_ALLOWED: 본인 차단·해제. 또는 잘못된 UUID·쿼리·알 수 없는 필드.",
+        "headers": {
+          "Cache-Control": {
+            "description": "모든 응답은 저장을 금지한다.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "BlockError404": {
+        "description": "USER_NOT_FOUND: 차단할 수 있는 회원이 아님(존재 여부를 구분하지 않음) 또는 목록 cursor가 더 이상 차단 목록에 없음.",
+        "headers": {
+          "Cache-Control": {
+            "description": "모든 응답은 저장을 금지한다.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "BlockError409": {
+        "description": "BLOCK_LIMIT_REACHED: 회원당 최대 500명까지 차단할 수 있다. 이미 차단한 회원에 대한 요청은 200.",
+        "headers": {
+          "Cache-Control": {
+            "description": "모든 응답은 저장을 금지한다.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "BlockError429": {
+        "description": "TOO_MANY_REQUESTS: 차단·해제 요청은 회원당 1시간 단위 고정 창에서 60회까지. Retry-After 헤더는 제공하지 않는다.",
+        "headers": {
+          "Cache-Control": {
+            "description": "모든 응답은 저장을 금지한다.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
             }
           }
         }

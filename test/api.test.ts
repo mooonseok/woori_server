@@ -32,6 +32,12 @@ test('health contract, private routes, fabricated credentials and CORS', async (
       '/v1/photos/p/comments',
       '/v1/comments',
       '/v1/notifications',
+      '/v1/notices',
+      '/v1/notices/315097d9-f1a4-4202-ad40-455124a80cc2',
+      '/v1/inquiries',
+      '/v1/inquiries/315097d9-f1a4-4202-ad40-455124a80cc2',
+      '/v1/reports',
+      '/v1/blocks',
       '/v1/admin',
       '/v1/admin/users',
     ]) {

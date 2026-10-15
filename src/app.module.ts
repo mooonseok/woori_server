@@ -1,5 +1,8 @@
 import { PushModule } from './domain/push/push.module';
 import { NotificationsModule } from './domain/notifications/notifications.module';
+import { ServiceSupportModule } from './domain/service-support/service-support.module';
+import { ReportsModule } from './domain/reports/reports.module';
+import { BlocksModule } from './domain/blocks/blocks.module';
 import { AuthModule } from './domain/auth/auth.module';
 import { InvitationsModule } from './domain/invitations/invitations.module';
 import { OriginGuard } from './common/guards/origin.guard';
@@ -25,6 +28,9 @@ import { PrivateApiController } from './domain/private-api.controller';
     AlbumsModule,
     PhotosModule,
     NotificationsModule,
+    ServiceSupportModule,
+    ReportsModule,
+    BlocksModule,
     AdminModule,
   ],
   controllers: [PrivateApiController],
