@@ -6,7 +6,10 @@ import { Prisma } from '@prisma/client';
 export async function markPhotosDeleted(
   tx: Prisma.TransactionClient,
   groupId: string,
-  scope: { albumId?: string; id?: string } = {},
+  scope: Pick<
+    Prisma.PhotoWhereInput,
+    'albumId' | 'id' | 'uploaderId' | 'status'
+  > = {},
   limit?: number
 ) {
   if (

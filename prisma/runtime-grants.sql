@@ -19,3 +19,10 @@ BEGIN
     END IF;
   END LOOP;
 END $$;
+
+-- Account withdrawal erases private records but keeps shared content identities.
+GRANT DELETE ON woori.sessions, woori.email_tokens, woori.notifications,
+  woori.notification_activities, woori.notification_preferences,
+  woori.group_notification_preferences, woori.push_installations,
+  woori.notification_deliveries, woori.outbox_events,
+  woori.photo_memory_preferences TO woori_api;

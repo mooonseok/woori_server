@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/modules/prisma/prisma.service';
 
@@ -64,20 +64,26 @@ export class GroupsRepository {
     return group ? groupSummary(group) : null;
   }
   async create(name: string, ownerId: string) {
-    const group = await this.prisma.client.group.create({
-      data: {
-        name,
-        ownerId,
-        memberships: {
-          create: {
-            userId: ownerId,
-            role: 'OWNER',
-            status: 'ACTIVE',
-            joinedAt: new Date(),
+    const group = await this.prisma.client.$transaction(async (tx) => {
+      const users = await tx.$queryRaw<
+        { id: string }[]
+      >`SELECT id FROM woori.users WHERE id=${ownerId}::uuid AND status='ACTIVE' FOR SHARE`;
+      if (!users.length) throw new UnauthorizedException();
+      return tx.group.create({
+        data: {
+          name,
+          ownerId,
+          memberships: {
+            create: {
+              userId: ownerId,
+              role: 'OWNER',
+              status: 'ACTIVE',
+              joinedAt: new Date(),
+            },
           },
         },
-      },
-      select: groupSummarySelect(ownerId),
+        select: groupSummarySelect(ownerId),
+      });
     });
     return groupSummary(group);
   }

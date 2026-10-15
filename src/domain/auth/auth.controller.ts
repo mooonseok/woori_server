@@ -1,3 +1,5 @@
+import { AccountDeletionService } from './account-deletion.service';
+import { DeleteAccountDto } from './dto/auth.dto';
 import { AccountSettingsService } from './account-settings.service';
 import { ChangePasswordDto, RequestEmailChangeDto } from './dto/auth.dto';
 import {
@@ -27,6 +29,7 @@ export class AuthController {
   constructor(
     private readonly service: AuthService,
     private readonly settings: AccountSettingsService,
+    private readonly deletion: AccountDeletionService,
     private readonly recovery: RecoveryService
   ) {}
   @Public()
@@ -94,6 +97,20 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response
   ) {
     return this.settings.confirmEmail(user.id, dto.token, request, response);
+  }
+  @Get('account-deletion')
+  accountDeletionPreview(@CurrentUser() user: SessionUser) {
+    return this.deletion.preview(user.id);
+  }
+  @Post('account-deletion')
+  @HttpCode(204)
+  deleteAccount(
+    @CurrentUser() user: SessionUser,
+    @Body() dto: DeleteAccountDto,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response
+  ) {
+    return this.deletion.delete(user.id, dto, request, response);
   }
   @Patch('profile')
   profile(@CurrentUser() user: SessionUser, @Body() dto: UpdateProfileDto) {

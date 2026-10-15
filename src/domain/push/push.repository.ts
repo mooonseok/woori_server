@@ -13,6 +13,12 @@ export class PushRepository {
     userId: string,
     tokenHash: string
   ) {
+    // Registration inserts a user foreign key after checking the session.
+    // Lock user before session to match credential changes and account deletion.
+    const users = await tx.$queryRaw<
+      { id: string }[]
+    >`SELECT id FROM woori.users WHERE id=${userId}::uuid AND status='ACTIVE' FOR SHARE`;
+    if (!users.length) throw new UnauthorizedException();
     const rows = await tx.$queryRaw<
       { id: string }[]
     >`SELECT s.id FROM woori.sessions s JOIN woori.users u ON u.id=s."userId" WHERE s."userId"=${userId}::uuid AND s."tokenHash"=${tokenHash} AND s.audience='web' AND s."revokedAt" IS NULL AND s."expiresAt">now() AND u.status='ACTIVE' FOR SHARE OF s`;
