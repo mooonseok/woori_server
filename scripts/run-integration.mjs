@@ -40,7 +40,10 @@ try {
     DATABASE_URL: runtime.toString(),
     MIGRATION_DATABASE_URL: owner.toString(),
     WEB_ORIGIN: 'http://localhost:3210',
-    CORS_ALLOWED_ORIGINS: 'http://localhost:3210',
+    // The admin web origin must also be CORS-allowed (validated at startup).
+    ADMIN_WEB_ORIGIN: 'http://localhost:3002',
+    ADMIN_TOTP_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
+    CORS_ALLOWED_ORIGINS: 'http://localhost:3210,http://localhost:3002',
     MAIL_MODE: 'file',
     DEV_MAIL_DIR: mail,
   };

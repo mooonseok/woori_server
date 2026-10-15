@@ -123,6 +123,9 @@ test('isolated PostgreSQL: recovery, profile and session reset boundaries', asyn
         await mutate(api.post('/v1/auth/recovery/password'))
           .send({ name: 'unknown', email: `unknown_${suffix}@example.test` })
           .expect(202, { accepted: true });
+        assert.equal((await mails()).length, before);
+        // W06 policy: a suspended member may still reset the password (login
+        // stays 403 ACCOUNT_SUSPENDED); the response envelope is unchanged.
         await admin.query(
           "UPDATE woori.users SET status='SUSPENDED' WHERE id=$1",
           [userId]
@@ -132,7 +135,7 @@ test('isolated PostgreSQL: recovery, profile and session reset boundaries', asyn
           "UPDATE woori.users SET status='ACTIVE' WHERE id=$1",
           [userId]
         );
-        assert.equal((await mails()).length, before);
+        assert.equal((await mails()).length, before + 1);
         const mail = app.get(MailService),
           original = mail.sendUsername;
         mail.sendUsername = async () => {
@@ -155,11 +158,19 @@ test('isolated PostgreSQL: recovery, profile and session reset boundaries', asyn
           m.subject.includes('이메일 주소')
         )!;
         await confirm(tokenIn(verification)).expect(400);
+        // Earlier reset mails (e.g. the suspended-account request) are known;
+        // pick each new token without relying on mail file order.
+        const known = new Set((await resetMails()).map(tokenIn));
         await requestReset().expect(202);
-        const first = tokenIn((await resetMails()).at(-1)!);
+        const first = (await resetMails())
+          .map(tokenIn)
+          .find((value) => !known.has(value))!;
+        assert.ok(first);
+        known.add(first);
         await requestReset().expect(202);
-        const messages = await resetMails();
-        resetToken = messages.map(tokenIn).find((value) => value !== first)!;
+        resetToken = (await resetMails())
+          .map(tokenIn)
+          .find((value) => !known.has(value))!;
         assert.ok(resetToken);
         await confirm(first).expect(400);
         await mutate(owner.post('/v1/auth/email-verification/confirm'))

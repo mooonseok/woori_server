@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { notBlocking } from '../blocks/block-visibility';
 // Called inside the successful domain transaction. Preferences affect future push
 // delivery only: the account inbox remains complete when push is muted.
 export async function recordPhotoActivity(
@@ -20,7 +21,8 @@ export async function recordPhotoActivity(
         kind === 'PHOTOS'
           ? { not: actorId }
           : { equals: photo.uploaderId, not: actorId },
-      user: { status: 'ACTIVE' },
+      // A recipient who blocked the actor gets no inbox row or push for it.
+      user: { status: 'ACTIVE', ...notBlocking(actorId) },
     },
     select: { userId: true },
     orderBy: { userId: 'asc' },

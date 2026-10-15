@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { markPhotosDeleted } from '../photos/photo-deletion';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/modules/prisma/prisma.service';
+import { visiblePhotoWhere } from '../blocks/block-visibility';
 @Injectable()
 export class AlbumsRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -58,11 +59,12 @@ export class AlbumsRepository {
         groupId: true,
         title: true,
         createdAt: true,
+        // Count and cover share the viewer's photo visibility (personal blocks).
         _count: {
-          select: { photos: { where: { status: 'READY', deletedAt: null } } },
+          select: { photos: { where: visiblePhotoWhere(userId) } },
         },
         photos: {
-          where: { status: 'READY', deletedAt: null },
+          where: visiblePhotoWhere(userId),
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
           take: 1,
           select: { id: true },
@@ -114,10 +116,10 @@ export class AlbumsRepository {
           title: true,
           createdAt: true,
           _count: {
-            select: { photos: { where: { status: 'READY', deletedAt: null } } },
+            select: { photos: { where: visiblePhotoWhere(userId) } },
           },
           photos: {
-            where: { status: 'READY', deletedAt: null },
+            where: visiblePhotoWhere(userId),
             orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
             take: 1,
             select: { id: true },

@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   ServiceUnavailableException,
   UnauthorizedException,
@@ -80,6 +81,14 @@ export class AuthService {
     await this.limits.consume(`login-name:${dto.username}`, 10);
     const user = await this.repository.findByUsername(dto.username);
     const correct = await verifyPassword(dto.password, user?.passwordHash);
+    // Only the correct password reveals a suspension; wrong passwords and every
+    // other state keep the generic answer.
+    if (user && correct && user.status === 'SUSPENDED')
+      throw new ForbiddenException({
+        code: 'ACCOUNT_SUSPENDED',
+        message:
+          '이용이 정지된 계정이에요. 문의가 필요하면 운영자에게 연락해 주세요.',
+      });
     if (!user || !correct || user.status !== 'ACTIVE')
       throw new UnauthorizedException({
         code: 'INVALID_CREDENTIALS',

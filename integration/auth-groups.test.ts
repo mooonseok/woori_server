@@ -2059,8 +2059,11 @@ test('real PostgreSQL: authentication, private groups and single-use invitation 
           .set('X-Woori-Request', '1')
           .send({ name: '차단' })
           .expect(403);
-        await owner.agent.get('/v1/admin').expect(403);
-        await owner.agent.get('/V1/ADMIN').expect(403);
+        // A member session never authenticates the separate admin realm.
+        for (const path of ['/v1/admin', '/V1/ADMIN', '/v1/admin/auth/me']) {
+          const rejected = await owner.agent.get(path).expect(401);
+          assert.equal(rejected.body.code, 'ADMIN_AUTHENTICATION_REQUIRED');
+        }
       }
     );
     await t.test(
@@ -2095,9 +2098,17 @@ test('real PostgreSQL: authentication, private groups and single-use invitation 
           [unverified.id]
         );
         await unverified.agent.get('/v1/auth/me').expect(401);
-        await mutation(api.post('/v1/auth/login'))
+        // W06: only the correct password reveals the suspension (403); a wrong
+        // password keeps the generic 401. Neither creates a session.
+        const suspended = await mutation(api.post('/v1/auth/login'))
           .send({ username: unverified.username, password })
+          .expect(403);
+        assert.equal(suspended.body.code, 'ACCOUNT_SUSPENDED');
+        assert.equal(suspended.headers['set-cookie'], undefined);
+        const wrong = await mutation(api.post('/v1/auth/login'))
+          .send({ username: unverified.username, password: `${password}-x` })
           .expect(401);
+        assert.equal(wrong.body.code, 'INVALID_CREDENTIALS');
         await admin.query(
           "UPDATE woori.users SET status='ACTIVE' WHERE id=$1",
           [unverified.id]

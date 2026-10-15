@@ -108,26 +108,55 @@
         "Chrome owner deletion blocked and group-management navigation verified. With action-time user approval, synthetic member deletion completed; remaining owner viewed preserved photo plus general/pin comments as 탈퇴한 회원. API/DB proved identity and personal records removed, both old sessions 401, original SHA256 unchanged, reaction retained; same username/email signup created new user ID and old photo access returned 404.",
         "With explicit user approval, added only DELETE grants for 10 private-data tables to local 127.0.0.1:55439/woori_dev. No schema migration, no current data deletion, no RLS change or production DB access.",
         "Actual R2 pending staging cleanup completed while READY original remained accessible. Full synthetic cleanup then verified group DELETED, usedBytes 0, both photo prefixes empty and staging absent; private fixture DB/mail/state removed and browser logged out. Normal local API restored. No commit/push. Mobile layout/physical-device and large-account load tests remain unverified; service guidance remains pending, so W05 stays in_progress.",
-        "User requested local commits for the completed account-deletion slice in the portfolio message format; no push authorized. Implementation, verification and pending mobile/load limits are recorded in this commit."
+        "User requested local commits for the completed account-deletion slice in the portfolio message format; no push authorized. Implementation, verification and pending mobile/load limits are recorded in this commit.",
+        "2026-10-15: user confirmed W05 service-guidance policy: block is personal one-directional hiding ('나에게만 숨김'); reports are operator-only (no owner/target notification, no auto-hide) with reporter status list; on account deletion inquiries are deleted and own reports keep target/reason/status with free-text detail erased. Notice authoring, inquiry answers and report processing stay closed to members until W06 admin.",
+        "Implemented on feature/service-guidance (both repos): read-only published notices, member inquiries (exact rolling 24h limit 5), photo/comment/member reports (one per target, 24h limit 20), personal blocks (500 max, 60/h) filtering album counts/covers, photo list/content proxy, comments+totals, reaction aggregates, memories, notification creation/inbox/target/push eligibility and display; MediaPhoto/NotificationTarget uploader and roster blockedByMe. OpenAPI 0.15.0.",
+        "Server baseline on develop 085d227 in this environment: 73 unit / 84 isolated integration. Final isolated-copy policy:quality passed: 18 policy, 87 unit, 128 isolated PostgreSQL integration (new suites service-support, content-reports, user-blocks incl. erasure/unblock race, uppercase id, EXPLAIN index use). Client baseline 85 functional; final isolated-copy policy:quality passed: 16 policy, 121 functional (11 script + 110 web), boundaries (195 files), lint/typecheck/format, web/admin production builds.",
+        "Independent read-only reviews: slices A/B (0 high, 2 medium, 8 low) and slice C (0 high, 3 medium, 5 low). Fixed: column-scoped content_reports UPDATE(detail, updatedAt), exact 24h counts, bidi/line-separator rejection, roster/notification-viewer focus and close-on-block, cover purge, post-unmount block event, unblock-time erasure, lowercase ids, notification_deliveries/outbox erasure indexes. Left documented: visibility timing difference (rate-limited UUIDv4), owner deleting a hidden comment by id, notification_deliveries.installationId index.",
+        "Isolated fixture DB + fixture API/worker (3011) + web (3220) with actual private R2 synthetic JPEGs: built-in browser owner/member/third/outsider flows verified notices list/detail/404/invalid id, inquiry create/detail/429, photo/member reports, duplicate report 200, block from report offer hiding B's photos (album 3->1, cover switch), comments 3->1, reactions 2->1, unread 7->2, content proxy 404 thumbnail/original vs own 200, roster blockedByMe; B and C views unchanged; outsider 404s; unblock restored content without notifications; account switch showed no prior user's data; notification-viewer block closed viewer with message. 375px emulated layout had no horizontal overflow.",
+        "iOS Simulator (iPhone 17, iOS 26.2) Mobile Safari only, not a physical device: login, MyPage, account settings, account deletion preflight, album with R2 photos, step guide skip, viewer menu uploader/report/block, scrollable report dialog, inquiry form rendered. Found and fixed input focus auto-zoom (<16px controls) with a touch-only 16px minimum; re-verified no zoom on the inquiry title field.",
+        "With explicit user approval, migrations 20261022000000_service_support, 20261023000000_content_reports, 20261024000000_user_blocks and index-only 20261025000000_notification_erasure_indexes plus runtime grants applied to 127.0.0.1:55439/woori_dev; existing 3 accounts unchanged; production/remote DB untouched. Fixture group deleted via API and worker: group DELETED, usedBytes 0, 3 photo prefixes and 3 staging keys 0 objects in R2; fixture DB dropped, private fixture files removed, own processes stopped, simulator shut down. User then requested a local commit of W05 before W06 on the same branch; no push.",
+        "W05 remains in_progress: physical iPhone/Android validation of account settings/deletion and service screens, real screen-reader pass and large-account deletion/erasure timing are unverified. Admin-side notice authoring, inquiry answering, report processing and retention periods move to W06."
       ],
       "implementationRefs": [
         "feature/account-settings; implementation and verification recorded in this commit; mobile layout validation pending",
         "project.json",
         "src/domain/auth/account-settings.repository.ts",
-        "feature/account-deletion; implementation and verification recorded in this commit; no push"
+        "feature/account-deletion; implementation and verification recorded in this commit; no push",
+        "feature/service-guidance; W05 service guidance/inquiries/reports/blocks implementation and verification recorded in this commit; no push",
+        "src/domain/service-support",
+        "src/domain/reports",
+        "src/domain/blocks/block-visibility.ts",
+        "contracts/openapi.json"
       ],
       "peerEvidence": [
         "Client/server aligned with contracts/openapi.json 0.11.0.",
-        "Client/server aligned with contracts/openapi.json 0.12.0 account-deletion preflight and submission contract."
+        "Client/server aligned with contracts/openapi.json 0.12.0 account-deletion preflight and submission contract.",
+        "Client/server aligned with contracts/openapi.json 0.15.0 (notices, inquiries, reports, blocks, MediaPhoto/NotificationTarget uploader, GroupMember blockedByMe); real browser requests verified against the fixture API and PostgreSQL."
       ]
     },
     {
       "id": "W06",
       "title": "관리자",
-      "status": "pending",
-      "evidence": [],
-      "implementationRefs": [],
-      "peerEvidence": []
+      "status": "in_progress",
+      "evidence": [
+        "2026-10-15 W06 slice A (admin auth, OpenAPI 0.16.0) and slice B (notices/inquiries/reports/audited photo+comment view, OpenAPI 0.17.0) implemented uncommitted on feature/service-guidance (server + apps/admin). Isolated gates: server unit 102 / integration 148 pass at slice B; client tests 177 pass at slice B.",
+        "Slice A/B verified on an isolated fixture (temporary DB, API 3011, static admin web 3230, private R2 synthetic photos): MFA setup/verify/reauth/logout, member session/origin rejection, report queue, audited photo view (display variant via blob, audit row with reason), reauth prompt after expiry, DELETE_CONTENT photo (same-target auto-resolve, member 404, cleanup job queued), comment view/delete, SUSPEND_USER (old session 401, content kept), inquiry answer visible to member, notice draft/publish/archive/schedule visibility and audit rows.",
+        "Slice C (members/groups/metrics, OpenAPI 0.18.0, migration 20261028000000_admin_member_operations index-only, roster shows suspended members) was in progress when work was paused by the user: typecheck and unit tests (106) pass; integration tests, OpenAPI review, admin web/server contract alignment and browser verification NOT done. Admin web slice C + member-web ACCOUNT_SUSPENDED message done (client tests 195 pass) against spec assumptions.",
+        "Not done: independent review of W06, woori_dev migration (20261026/20261027/20261028) and grant application (needs user approval), admin env setup, records final update. No commit or push of W06."
+      ],
+      "implementationRefs": [
+        "integration/admin-*.test.ts",
+        "prisma/migrations/20261026000000_admin_operations",
+        "prisma/migrations/20261027000000_admin_content_operations",
+        "prisma/migrations/20261028000000_admin_member_operations",
+        "prisma/runtime-grants.sql",
+        "scripts/admin-accounts.mjs",
+        "src/admin/**"
+      ],
+      "peerEvidence": [
+        "W06 slice A/B: client and server aligned with contracts/openapi.json 0.17.0 (reporter.status pending in slice C); slice C contract alignment pending."
+      ]
     },
     {
       "id": "W07",
@@ -148,7 +177,9 @@
   ],
   "pendingDecisions": [
     "W04: physical iPhone/Android acceptance and deployment memory testing remain; HEIC decoder adoption deferred after failed installed-decoder PoC.",
-    "W05-W08: review corresponding DESIGN.md decisions before implementation."
+    "W05: physical-device/mobile screen-reader validation remains; operator identity, privacy contact, retention periods and legal policy text are undecided and shown as placeholders.",
+    "W06: audit-log, report and inquiry retention periods undecided; operator identity/contact still placeholders (W05).",
+    "W07-W08: review corresponding DESIGN.md decisions before implementation."
   ],
   "durableDecisionsMoved": false,
   "permanentRefs": []

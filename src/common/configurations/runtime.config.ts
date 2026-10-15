@@ -1,8 +1,10 @@
+import { adminConfig, type AdminConfig } from './admin.config';
 export interface RuntimeConfig {
   port: number;
   trustedProxyHops: number;
   allowedOrigins: string[];
   databaseUrl?: string;
+  admin: AdminConfig | null;
 }
 export function runtimeConfig(
   env: NodeJS.ProcessEnv = process.env
@@ -38,5 +40,7 @@ export function runtimeConfig(
     trustedProxyHops,
     allowedOrigins,
     databaseUrl: env.DATABASE_URL || undefined,
+    // Validated at startup: a set ADMIN_WEB_ORIGIN must be CORS-allowed.
+    admin: adminConfig(env, allowedOrigins),
   };
 }

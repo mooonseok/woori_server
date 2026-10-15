@@ -1,7 +1,7 @@
 {
   "name": "woori_server",
   "product": "우리",
-  "status": "account-deletion-implemented-mobile-validation-pending",
+  "status": "service-guidance-implemented-mobile-validation-pending",
   "plans": "/Users/parkmoonseok/.Codex/projects/woori_server/plans",
   "sharedPlan": "/Users/parkmoonseok/.Codex/projects/woori/plans/00-product-plan.md",
   "implemented": [
@@ -42,7 +42,9 @@
     "bounded local read-only DB/R2 photo-prefix reconciliation report; no automatic orphan deletion",
     "60MP image validation, bounded sharp cache/concurrency, real 48MP JPEG and EXIF orientation tests",
     "authenticated password/email changes with current-password reauthentication, single-use account-bound email confirmation and all-session/push revocation",
-    "member account deletion with ownership preflight, password reauthentication, atomic identity/private-record erasure, shared-content retention and fresh-signup isolation"
+    "member account deletion with ownership preflight, password reauthentication, atomic identity/private-record erasure, shared-content retention and fresh-signup isolation",
+    "read-only published notices; member inquiries with own list/detail and exact rolling 24-hour limit; operator-only photo/comment/member reports with own status list",
+    "personal one-directional user blocks hiding blocked members' photos, comments, reactions, memories and notifications/push for the blocker only; block-time notification erasure; roster blockedByMe and photo uploader exposure"
   ],
   "notImplemented": [
     "production Supabase/Railway/R2 provisioning and deployment",
@@ -54,7 +56,11 @@
     "automatic memory push notifications",
     "global bucket orphan inventory and automatic orphan deletion",
     "HEIC pixel decoding and physical-device photo workflow validation",
-    "service guidance"
+    "admin notice authoring, inquiry answers and report processing (W06)",
+    "operator identity, privacy contact, retention periods and finalized privacy policy text (placeholders shown)",
+    "album cover selection and album date range",
+    "server-side album search/sort and album pagination beyond 50; taken-date sort is demo-only",
+    "group join approval and join notifications (enum/preference only)"
   ],
   "deployment": {
     "api": "Railway paid; Serverless off",
@@ -76,7 +82,7 @@
     "authorization": "RLS allows server runtime role across granted rows; per-user group isolation is enforced in API membership queries",
     "runtimeGrants": "prisma/runtime-grants.sql",
     "pendingMigration": null,
-    "latestLocalMigration": "20261021000000_account_settings (applied to woori_dev with explicit user approval; remote not applied)"
+    "latestLocalMigration": "20261025000000_notification_erasure_indexes (W05 migrations 20261022-20261025 applied to woori_dev with explicit user approval; remote not applied)"
   },
   "runtimeConfiguration": {
     "PORT": "default 3001",
@@ -158,5 +164,16 @@
     "database": "No schema migration. With explicit user approval, DELETE grants on 10 private-data tables applied to 127.0.0.1:55439/woori_dev; existing FOR ALL RLS retained, no data changed by grant application. Production DB untouched. Rollback permission change by revoking only these newly added DELETE grants; completed account deletion is not reversible.",
     "limits": "Physical-device/mobile layout and large-account transaction duration remain unverified. API deletion transaction timeout is 30 seconds.",
     "cleanup": "Synthetic group DELETED, quota zero, both test photo prefixes and staging objects absent in R2. Browser logged out; isolated fixture DB and private mail/session state removed; normal local API restored."
+  },
+  "serviceGuidance": {
+    "scope": "W05 service guidance on feature/service-guidance: notices, help, inquiries, privacy summary, reports and personal blocks. OpenAPI 0.15.0.",
+    "notices": "Members read PUBLISHED notices with publishedAt <= now only; no member write path; authoring is W06 admin. Runtime role has SELECT only.",
+    "inquiries": "Member creates category/title/body (trimmed code points 100/2000, control/bidi characters rejected) and reads own list/detail; 5 per exact rolling 24 hours; status changes/answers are W06. Deleted immediately on account deletion.",
+    "reports": "PHOTO/COMMENT/USER targets visible to the reporter; one report per reporter and target (duplicate returns 200); 20 per rolling 24 hours; operator-only handling, no notification to owner/target and no auto-hide. On reporter deletion the row keeps target/reason/status and free-text detail is erased. Runtime UPDATE limited to detail/updatedAt.",
+    "blocks": "Personal and one-directional: blocker no longer sees blocked user's photos (counts/covers/list/content/memories), comments and totals, reactions, and receives no notifications/push caused by them; blocked user is not notified and group membership is unchanged. Block erases existing blocker<-blocked notifications; unblock restores content only. 500 per user, 60 mutations/hour. Blocker rows deleted on blocker account deletion; rows naming a deleted user are kept.",
+    "privacy": "Public help/privacy pages describe implemented behaviour only; operator, privacy officer/contact, retention, processors and effective date are null placeholders until decided.",
+    "verification": "Server 18 policy/87 unit/128 isolated integration; client 16 policy/121 functional, boundaries, builds. Isolated fixture DB with actual private R2 synthetic photos and owner/member/third/outsider browser flows; iOS Simulator Mobile Safari layout (not a physical device). Two independent reviews with fixes applied.",
+    "remaining": "Physical iPhone/Android and screen-reader validation, large-account erasure timing, and W06 admin processing remain.",
+    "database": "Additive migrations 20261022000000_service_support, 20261023000000_content_reports, 20261024000000_user_blocks and index-only 20261025000000_notification_erasure_indexes. Rollback: drop the four new tables/enums and two indexes and their migration records; completed account deletions are not reversible."
   }
 }

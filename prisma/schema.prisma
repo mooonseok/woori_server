@@ -86,6 +86,68 @@ enum JobStatus {
   @@schema("woori")
 }
 
+enum NoticeStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+
+  @@schema("woori")
+}
+
+enum InquiryCategory {
+  ACCOUNT
+  GROUP
+  PHOTO
+  NOTIFICATION
+  BUG
+  OTHER
+
+  @@schema("woori")
+}
+
+enum InquiryStatus {
+  RECEIVED
+  IN_PROGRESS
+  ANSWERED
+  CLOSED
+
+  @@schema("woori")
+}
+
+enum ReportTargetType {
+  PHOTO
+  COMMENT
+  USER
+
+  @@schema("woori")
+}
+
+enum ReportReason {
+  INAPPROPRIATE
+  HARASSMENT
+  PRIVACY
+  SPAM
+  OTHER
+
+  @@schema("woori")
+}
+
+enum ReportStatus {
+  RECEIVED
+  REVIEWING
+  RESOLVED
+  DISMISSED
+
+  @@schema("woori")
+}
+
+enum AdminStatus {
+  ACTIVE
+  DISABLED
+
+  @@schema("woori")
+}
+
 model User {
   id                     String                        @id @default(uuid()) @db.Uuid
   username               String                        @unique @db.VarChar(64)
@@ -109,7 +171,13 @@ model User {
   groupPreferences       GroupNotificationPreference[]
   installations          PushInstallation[]
   memoryPreferences      PhotoMemoryPreference[]
+  inquiries              Inquiry[]
+  reportsFiled           ContentReport[]               @relation("ReportsFiled")
+  reportsReceived        ContentReport[]               @relation("ReportsReceived")
+  blocks                 UserBlock[]                   @relation("Blocker")
+  blockedBy              UserBlock[]                   @relation("BlockedUser")
 
+  @@index([status, createdAt(sort: Desc), id(sort: Desc)])
   @@map("users")
   @@schema("woori")
 }
@@ -145,7 +213,10 @@ model Group {
   photos        Photo[]
   notifications Notification[]
   preferences   GroupNotificationPreference[]
+  reports       ContentReport[]
 
+  @@index([status, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([ownerId, status])
   @@map("groups")
   @@schema("woori")
 }
@@ -220,6 +291,8 @@ model Photo {
   @@unique([id, groupId])
   @@index([albumId, status, createdAt, id])
   @@index([groupId, status, uploadExpiresAt])
+  @@index([uploaderId, status])
+  @@index([status, processingQueuedAt])
   @@map("photos")
   @@schema("woori")
 }
@@ -259,6 +332,7 @@ model Comment {
 
   @@unique([id, photoId])
   @@index([photoId, createdAt])
+  @@index([authorId])
   @@map("comments")
   @@schema("woori")
 }
@@ -380,6 +454,7 @@ model NotificationDelivery {
   installation   PushInstallation @relation(fields: [installationId], references: [id], onDelete: Restrict)
 
   @@index([status, nextAttemptAt])
+  @@index([notificationId])
   @@map("notification_deliveries")
   @@schema("woori")
 }
@@ -397,6 +472,7 @@ model OutboxEvent {
   createdAt     DateTime  @default(now()) @db.Timestamptz(6)
 
   @@index([status, nextAttemptAt])
+  @@index([aggregateId])
   @@map("outbox_events")
   @@schema("woori")
 }
@@ -472,5 +548,143 @@ model PhotoMemoryPreference {
 
   @@id([userId, photoId])
   @@map("photo_memory_preferences")
+  @@schema("woori")
+}
+
+model Notice {
+  id          String       @id @default(uuid()) @db.Uuid
+  title       String       @db.VarChar(120)
+  body        String       @db.VarChar(10000)
+  status      NoticeStatus @default(DRAFT)
+  publishedAt DateTime?    @db.Timestamptz(6)
+  createdAt   DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime     @updatedAt @db.Timestamptz(6)
+
+  @@index([status, publishedAt(sort: Desc), id(sort: Desc)])
+  @@index([updatedAt(sort: Desc), id(sort: Desc)])
+  @@map("notices")
+  @@schema("woori")
+}
+
+model Inquiry {
+  id         String          @id @default(uuid()) @db.Uuid
+  userId     String          @db.Uuid
+  category   InquiryCategory
+  title      String          @db.VarChar(100)
+  body       String          @db.VarChar(2000)
+  status     InquiryStatus   @default(RECEIVED)
+  answer     String?         @db.VarChar(4000)
+  answeredAt DateTime?       @db.Timestamptz(6)
+  createdAt  DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime        @updatedAt @db.Timestamptz(6)
+  user       User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
+  @@index([status, createdAt(sort: Desc), id(sort: Desc)])
+  @@map("inquiries")
+  @@schema("woori")
+}
+
+model ContentReport {
+  id           String           @id @default(uuid()) @db.Uuid
+  reporterId   String           @db.Uuid
+  groupId      String           @db.Uuid
+  targetType   ReportTargetType
+  targetId     String           @db.Uuid
+  targetUserId String           @db.Uuid
+  reason       ReportReason
+  detail       String?          @db.VarChar(500)
+  status       ReportStatus     @default(RECEIVED)
+  createdAt    DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime         @updatedAt @db.Timestamptz(6)
+  resolvedAt   DateTime?        @db.Timestamptz(6)
+  // Operator-only outcome (CONTENT_DELETED | USER_SUSPENDED | NO_ACTION).
+  resolution   String?          @db.VarChar(32)
+  reporter     User             @relation("ReportsFiled", fields: [reporterId], references: [id], onDelete: Restrict)
+  targetUser   User             @relation("ReportsReceived", fields: [targetUserId], references: [id], onDelete: Restrict)
+  group        Group            @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  @@unique([reporterId, targetType, targetId])
+  @@index([reporterId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([status, createdAt])
+  @@index([targetType, targetId, status])
+  @@index([targetUserId, status])
+  @@map("content_reports")
+  @@schema("woori")
+}
+
+model UserBlock {
+  blockerId String   @db.Uuid
+  blockedId String   @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  blocker   User     @relation("Blocker", fields: [blockerId], references: [id], onDelete: Restrict)
+  blocked   User     @relation("BlockedUser", fields: [blockedId], references: [id], onDelete: Restrict)
+
+  @@id([blockerId, blockedId])
+  @@index([blockedId])
+  @@map("user_blocks")
+  @@schema("woori")
+}
+
+// Service operator accounts are separate from member accounts. Accounts are
+// created, disabled and MFA-reset only by the owner-connection CLI; the runtime
+// role may update only login-state columns (see runtime-grants.sql).
+model AdminAccount {
+  id                   String          @id @default(uuid()) @db.Uuid
+  username             String          @unique @db.VarChar(64)
+  displayName          String          @db.VarChar(80)
+  passwordHash         String          @db.VarChar(512)
+  status               AdminStatus     @default(ACTIVE)
+  totpSecretCiphertext String?
+  totpEnabledAt        DateTime?       @db.Timestamptz(6)
+  totpLastUsedStep     BigInt?
+  failedLoginCount     Int             @default(0)
+  lockedUntil          DateTime?       @db.Timestamptz(6)
+  passwordChangedAt    DateTime        @default(now()) @db.Timestamptz(6)
+  lastLoginAt          DateTime?       @db.Timestamptz(6)
+  createdAt            DateTime        @default(now()) @db.Timestamptz(6)
+  sessions             AdminSession[]
+  auditLogs            AdminAuditLog[]
+
+  @@map("admin_accounts")
+  @@schema("woori")
+}
+
+model AdminSession {
+  id             String       @id @default(uuid()) @db.Uuid
+  adminId        String       @db.Uuid
+  tokenHash      String       @unique @db.VarChar(128)
+  createdAt      DateTime     @default(now()) @db.Timestamptz(6)
+  expiresAt      DateTime     @db.Timestamptz(6)
+  idleExpiresAt  DateTime     @db.Timestamptz(6)
+  mfaVerifiedAt  DateTime?    @db.Timestamptz(6)
+  reauthAt       DateTime?    @db.Timestamptz(6)
+  mfaFailedCount Int          @default(0)
+  revokedAt      DateTime?    @db.Timestamptz(6)
+  admin          AdminAccount @relation(fields: [adminId], references: [id], onDelete: Restrict)
+
+  @@index([adminId])
+  @@map("admin_sessions")
+  @@schema("woori")
+}
+
+// Append-only: the runtime role may only SELECT and INSERT.
+model AdminAuditLog {
+  id         String        @id @default(uuid()) @db.Uuid
+  adminId    String?       @db.Uuid
+  action     String        @db.VarChar(64)
+  targetType String?       @db.VarChar(32)
+  targetId   String?       @db.Uuid
+  reason     String?       @db.VarChar(500)
+  metadata   Json          @default("{}")
+  createdAt  DateTime      @default(now()) @db.Timestamptz(6)
+  admin      AdminAccount? @relation(fields: [adminId], references: [id], onDelete: Restrict)
+
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
+  @@index([targetType, targetId, createdAt(sort: Desc)])
+  @@index([adminId, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc), id(sort: Desc)])
+  @@map("admin_audit_logs")
   @@schema("woori")
 }

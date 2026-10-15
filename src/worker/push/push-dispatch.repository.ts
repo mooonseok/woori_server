@@ -120,6 +120,12 @@ export class PushDispatchRepository {
     );
     if (!rows.length) return null;
     const row = rows[0];
+    // visible() already hides blocked actors; the policy input is filled too so
+    // the evaluation never relies on an empty placeholder.
+    const blocks = await this.prisma.client.userBlock.findMany({
+      where: { blockerId: i.userId, blockedId: row.actorId },
+      select: { blockedId: true },
+    });
     const p = await this.prisma.client.notificationPreference.findUnique({
       where: { userId: i.userId },
     });
@@ -154,7 +160,7 @@ export class PushDispatchRepository {
         owner: false,
         intendedRecipient: true,
         targetAvailable: true,
-        blockedActorIds: new Set(),
+        blockedActorIds: new Set(blocks.map((block) => block.blockedId)),
         pushPermission: true,
         enabled: p?.enabled ?? true,
         types: {

@@ -7,8 +7,27 @@ import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/modules/prisma/prisma.service';
 import { markPhotosDeleted } from '../photos/photo-deletion';
+import { eraseInquiriesOnAccountDeletion } from '../service-support/inquiry-retention';
+import { anonymizeReportsOnAccountDeletion } from '../reports/report-retention';
+import { eraseBlocksOnAccountDeletion } from '../blocks/block-retention';
 
 class MembershipChanged extends Error {}
+export type AccountOwnership = {
+  ownedGroups: { id: string; name: string }[];
+  ownedGroupCount: number;
+  canDelete: boolean;
+};
+// Caller-specific checks around the shared deletion core. The member path
+// verifies its own session and password; the admin path checks the account
+// state and confirmation instead. Both throw to roll back.
+export interface AccountDeletionHooks {
+  // Runs after the account rows are locked (groups → memberships → user →
+  // sessions) and before the ownership preflight.
+  authorize(tx: Prisma.TransactionClient): Promise<void>;
+  ownedGroupsRemain(ownership: AccountOwnership): never;
+  // Runs last in the same transaction (e.g. an audit row).
+  completed?(tx: Prisma.TransactionClient): Promise<void>;
+}
 @Injectable()
 export class AccountDeletionRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -40,7 +59,34 @@ export class AccountDeletionRepository {
       >`SELECT id FROM woori.groups WHERE "ownerId"=${userId}::uuid UNION SELECT "groupId" AS id FROM woori.memberships WHERE "userId"=${userId}::uuid UNION SELECT "groupId" AS id FROM woori.photos WHERE "uploaderId"=${userId}::uuid ORDER BY id`
     ).map((row) => row.id);
   }
-  async delete(userId: string, sessionHash: string, expectedHash: string) {
+  delete(userId: string, sessionHash: string, expectedHash: string) {
+    return this.erase(userId, {
+      authorize: async (tx) => {
+        const session = await tx.session.findFirst({
+          where: {
+            userId,
+            tokenHash: sessionHash,
+            audience: 'web',
+            revokedAt: null,
+            expiresAt: { gt: new Date() },
+            user: { status: 'ACTIVE', passwordHash: expectedHash },
+          },
+        });
+        if (!session) throw new UnauthorizedException();
+      },
+      ownedGroupsRemain: (ownership) => {
+        throw new ConflictException({
+          code: 'ACCOUNT_OWNS_GROUPS',
+          message: '그룹장을 넘기거나 그룹 삭제를 요청한 뒤 탈퇴할 수 있어요.',
+          ...ownership,
+        });
+      },
+    });
+  }
+  // Shared account deletion core (member withdrawal and admin deletion): same
+  // lock order, same erasure of private data and the same anonymization of
+  // shared content. Retries only membership races and deadlocks.
+  async erase(userId: string, hooks: AccountDeletionHooks) {
     for (let attempt = 0; attempt < 4; attempt++) {
       try {
         await this.prisma.client.$transaction(
@@ -60,25 +106,9 @@ export class AccountDeletionRepository {
             )
               throw new MembershipChanged();
             await tx.$queryRaw`SELECT id FROM woori.sessions WHERE "userId"=${userId}::uuid ORDER BY id FOR UPDATE`;
-            const session = await tx.session.findFirst({
-              where: {
-                userId,
-                tokenHash: sessionHash,
-                audience: 'web',
-                revokedAt: null,
-                expiresAt: { gt: new Date() },
-                user: { status: 'ACTIVE', passwordHash: expectedHash },
-              },
-            });
-            if (!session) throw new UnauthorizedException();
+            await hooks.authorize(tx);
             const ownership = await this.owned(tx, userId);
-            if (!ownership.canDelete)
-              throw new ConflictException({
-                code: 'ACCOUNT_OWNS_GROUPS',
-                message:
-                  '그룹장을 넘기거나 그룹 삭제를 요청한 뒤 탈퇴할 수 있어요.',
-                ...ownership,
-              });
+            if (!ownership.canDelete) hooks.ownedGroupsRemain(ownership);
             for (const groupId of groups)
               await markPhotosDeleted(tx, groupId, {
                 uploaderId: userId,
@@ -118,6 +148,12 @@ export class AccountDeletionRepository {
               where: { userId },
             });
             await tx.photoMemoryPreference.deleteMany({ where: { userId } });
+            // Inquiries are personal support records; the policy lives in one place.
+            await eraseInquiriesOnAccountDeletion(tx, userId);
+            // Filed reports stay for the operator without the reporter's free text.
+            await anonymizeReportsOnAccountDeletion(tx, userId);
+            // Own blocks are personal settings; blocks on this user are kept.
+            await eraseBlocksOnAccountDeletion(tx, userId);
             const tombstone = randomUUID();
             await tx.user.update({
               where: { id: userId },
@@ -130,6 +166,7 @@ export class AccountDeletionRepository {
                 verifiedAt: null,
               },
             });
+            await hooks.completed?.(tx);
           },
           { timeout: 30_000 }
         );

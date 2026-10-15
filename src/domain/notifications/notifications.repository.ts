@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/modules/prisma/prisma.service';
+import { notBlockedBySql } from '../blocks/block-visibility';
 import type {
   ObservedNotificationDto,
   UpdateGroupPreferenceDto,
@@ -37,8 +38,12 @@ export function validateQuietPreferences(p: {
       message: '방해 금지 시작과 종료 시간을 다르게 설정해 주세요.',
     });
 }
+// Shared by inbox list, unread count, /target, read, read-all and web push
+// eligibility/display: activity by an actor the recipient blocked is never shown,
+// and a target photo whose uploader the recipient blocked is invisible (the same
+// predicate as MediaPhoto reads).
 export function visible(userId: string) {
-  return Prisma.sql`SELECT n.id,n.kind,n."groupId",g.name AS "groupName",p."albumId",a.title AS "albumTitle",p.id AS "photoId",c.id AS "commentId",n."createdAt",n."readThroughSequence",act.sequence AS "latestSequence",u.id AS "actorId",u."displayName" AS "actorName"
+  return Prisma.sql`SELECT n.id,n.kind,n."groupId",g.name AS "groupName",p."albumId",a.title AS "albumTitle",p.id AS "photoId",p."uploaderId",c.id AS "commentId",n."createdAt",n."readThroughSequence",act.sequence AS "latestSequence",u.id AS "actorId",u."displayName" AS "actorName"
     FROM woori.notifications n
     JOIN woori.groups g ON g.id=n."groupId" AND g.status='ACTIVE'
     JOIN woori.memberships m ON m."groupId"=g.id AND m."userId"=${userId}::uuid AND m.status='ACTIVE'
@@ -49,6 +54,8 @@ export function visible(userId: string) {
     JOIN woori.photos p ON p.id=CASE WHEN n.kind IN ('COMMENT','PIN') THEN c."photoId" ELSE n."targetId" END AND p."groupId"=g.id AND p.status='READY' AND p."deletedAt" IS NULL
     JOIN woori.albums a ON a.id=p."albumId" AND a."groupId"=g.id AND a."deletedAt" IS NULL
     WHERE n."recipientId"=${userId}::uuid AND act."actorId"<>${userId}::uuid
+      AND ${notBlockedBySql(userId, Prisma.sql`act."actorId"`)}
+      AND ${notBlockedBySql(userId, Prisma.sql`p."uploaderId"`)}
       AND n.kind IN ('PHOTOS','COMMENT','PIN','REACTION')
       AND (n.kind<>'REACTION' OR EXISTS(SELECT 1 FROM woori.reactions r WHERE r."photoId"=p.id AND r."userId"=act."actorId"))`;
 }
@@ -60,6 +67,7 @@ export type InboxRow = {
   albumId: string;
   albumTitle: string;
   photoId: string;
+  uploaderId: string;
   commentId: string | null;
   createdAt: Date;
   readThroughSequence: number;
@@ -107,11 +115,14 @@ export class NotificationsRepository {
         const more = rows.length > limit;
         if (more) rows.pop();
         return {
-          notifications: rows.map(({ actorId, actorName, ...row }) => ({
-            ...row,
-            actor: { id: actorId, displayName: actorName },
-            unread: row.readThroughSequence < row.latestSequence,
-          })),
+          // The inbox item shape is unchanged; uploaderId is only used by /target.
+          notifications: rows.map(
+            ({ actorId, actorName, uploaderId: _, ...row }) => ({
+              ...row,
+              actor: { id: actorId, displayName: actorName },
+              unread: row.readThroughSequence < row.latestSequence,
+            })
+          ),
           nextCursor: more ? rows.at(-1)!.id : null,
           unreadCount: Number(counts[0].count),
         };
@@ -120,12 +131,19 @@ export class NotificationsRepository {
     );
   }
   async target(userId: string, id: string) {
-    const rows = await this.prisma.client.$queryRaw<InboxRow[]>(
-      Prisma.sql`WITH visible AS (${visible(userId)}) SELECT * FROM visible WHERE id=${id}::uuid`
+    const rows = await this.prisma.client.$queryRaw<
+      (InboxRow & { uploaderName: string })[]
+    >(
+      Prisma.sql`WITH visible AS (${visible(userId)}) SELECT v.*,pu."displayName" AS "uploaderName" FROM visible v JOIN woori.users pu ON pu.id=v."uploaderId" WHERE v.id=${id}::uuid`
     );
     if (!rows.length) notificationNotFound();
     const { groupId, albumId, photoId, commentId, latestSequence } = rows[0];
-    return { groupId, albumId, photoId, commentId, latestSequence };
+    // The target photo's uploader lets the viewer report or block from here.
+    const uploader = {
+      id: rows[0].uploaderId,
+      displayName: rows[0].uploaderName,
+    };
+    return { groupId, albumId, photoId, commentId, latestSequence, uploader };
   }
   async read(userId: string, items: ObservedNotificationDto[]) {
     const ids = [...new Set(items.map((i) => i.id))];

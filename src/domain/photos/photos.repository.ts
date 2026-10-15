@@ -10,8 +10,14 @@ import { markPhotosDeleted } from './photo-deletion';
 import { randomUUID } from 'node:crypto';
 import { Prisma, type Photo } from '@prisma/client';
 import { PrismaService } from '../../common/modules/prisma/prisma.service';
+import { notBlockedBy, visiblePhotoWhere } from '../blocks/block-visibility';
 import type { MediaVariant } from '../../common/media/media-storage.service';
 const RESERVATION = 90n * 1024n * 1024n;
+// Every MediaPhoto response names its uploader (withdrawn accounts already
+// read '탈퇴한 회원').
+export const photoUploader = {
+  select: { id: true, displayName: true },
+} satisfies Prisma.UserDefaultArgs;
 export const photoSummary = {
   id: true,
   groupId: true,
@@ -24,6 +30,7 @@ export const photoSummary = {
   captureDateSource: true,
   createdAt: true,
   status: true,
+  uploader: photoUploader,
 } satisfies Prisma.PhotoSelect;
 export function notFound(): never {
   throw new NotFoundException({
@@ -91,13 +98,13 @@ export class PhotosRepository {
     await this.assertAlbum(groupId, albumId, userId);
     let older: Prisma.PhotoWhereInput = {};
     if (cursor) {
+      // A cursor hidden since (deleted or uploader blocked) is an invalid cursor.
       const anchor = await this.prisma.client.photo.findFirst({
         where: {
           id: cursor,
           groupId,
           albumId,
-          status: 'READY',
-          deletedAt: null,
+          ...visiblePhotoWhere(userId),
           group: memberScope(userId),
         },
         select: { id: true, createdAt: true },
@@ -114,8 +121,7 @@ export class PhotosRepository {
       where: {
         groupId,
         albumId,
-        status: 'READY',
-        deletedAt: null,
+        ...visiblePhotoWhere(userId),
         group: memberScope(userId),
         album: { deletedAt: null },
         ...older,
@@ -222,6 +228,7 @@ export class PhotosRepository {
           uploaderId: userId,
           deletedAt: null,
         },
+        include: { uploader: photoUploader },
       });
       if (!photo) notFound();
       if (photo.status === 'READY') return { ready: true as const, photo };
@@ -351,7 +358,9 @@ export class PhotosRepository {
     });
     return result.count;
   }
-  processingSummary(photo: Photo) {
+  processingSummary(
+    photo: Photo & { uploader: { id: string; displayName: string } }
+  ) {
     const status =
       photo.status === 'READY'
         ? 'READY'
@@ -393,6 +402,7 @@ export class PhotosRepository {
           uploaderId: userId,
           deletedAt: null,
         },
+        include: { uploader: photoUploader },
       });
       if (!photo) notFound();
       if (photo.processingQueuedAt || photo.status === 'READY')
@@ -417,6 +427,7 @@ export class PhotosRepository {
             processingAttempts: 0,
             processingErrorCode: null,
           },
+          include: { uploader: photoUploader },
         })
       );
     });
@@ -439,6 +450,7 @@ export class PhotosRepository {
         group: memberScope(userId),
         album: { deletedAt: null },
       },
+      include: { uploader: photoUploader },
     });
     if (!photo) notFound();
     return this.processingSummary(photo);
@@ -481,6 +493,7 @@ export class PhotosRepository {
       where: { ...scope, ...older },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit + 1,
+      include: { uploader: photoUploader },
     });
     const hasNext = rows.length > limit;
     if (hasNext) rows.pop();
@@ -521,19 +534,23 @@ export class PhotosRepository {
         });
         if (!photo) return null;
         const members = await tx.$queryRaw<
-          { id: string }[]
-        >`SELECT u.id FROM woori.memberships m JOIN woori.users u ON u.id=m."userId" WHERE m."groupId"=${photo.groupId}::uuid AND m."userId"=${photo.uploaderId}::uuid AND m.status='ACTIVE' AND u.status='ACTIVE' FOR SHARE OF m,u`;
+          { status: string }[]
+        >`SELECT u.status::text AS status FROM woori.memberships m JOIN woori.users u ON u.id=m."userId" WHERE m."groupId"=${photo.groupId}::uuid AND m."userId"=${photo.uploaderId}::uuid AND m.status='ACTIVE' FOR SHARE OF m,u`;
         const album = await tx.album.findFirst({
           where: { id: photo.albumId, groupId: photo.groupId, deletedAt: null },
         });
+        // A suspended (non-ACTIVE) uploader's accepted jobs end FAILED so
+        // suspension also blocks new shared content.
         const error =
           groups[0].status !== 'ACTIVE' || !members.length || !album
             ? 'UPLOAD_ACCESS_REVOKED'
-            : !photo.processingDeadlineAt || photo.processingDeadlineAt <= now
-              ? 'UPLOAD_EXPIRED'
-              : photo.processingAttempts >= 5
-                ? 'PHOTO_PROCESSING_FAILED'
-                : null;
+            : members[0].status !== 'ACTIVE'
+              ? 'UPLOADER_INACTIVE'
+              : !photo.processingDeadlineAt || photo.processingDeadlineAt <= now
+                ? 'UPLOAD_EXPIRED'
+                : photo.processingAttempts >= 5
+                  ? 'PHOTO_PROCESSING_FAILED'
+                  : null;
         if (error) {
           await tx.photo.update({
             where: { id: photo.id },
@@ -615,13 +632,13 @@ export class PhotosRepository {
     userId: string,
     kind: string
   ) {
+    // Checked before and after the R2 read: a blocked uploader's photo is 404.
     const photo = await this.prisma.client.photo.findFirst({
       where: {
         id: photoId,
         groupId,
         albumId,
-        status: 'READY',
-        deletedAt: null,
+        ...visiblePhotoWhere(userId),
         group: memberScope(userId),
         album: { deletedAt: null },
       },
@@ -649,8 +666,15 @@ export class PhotosRepository {
         where: { groupId_userId: { groupId, userId } },
         select: { role: true },
       });
+      // A photo hidden from this viewer by a personal block is not found, even
+      // for the owner (album deletion still removes every photo).
       const photo = await tx.photo.findFirst({
-        where: { id: photoId, albumId, groupId },
+        where: {
+          id: photoId,
+          albumId,
+          groupId,
+          uploader: notBlockedBy(userId),
+        },
       });
       if (
         !photo ||
@@ -713,6 +737,7 @@ export class PhotosRepository {
       manualCapturedDate?: Date | null;
       createdAt: Date;
       status: string;
+      uploader: { id: string; displayName: string };
     },
     canDelete = true
   ) {
@@ -728,6 +753,10 @@ export class PhotosRepository {
       createdAt: photo.createdAt,
       status: photo.status,
       canDelete,
+      uploader: {
+        id: photo.uploader.id,
+        displayName: photo.uploader.displayName,
+      },
     };
   }
 }

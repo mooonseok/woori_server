@@ -109,6 +109,7 @@ test('isolated PostgreSQL: group lifecycle, content retention and durable deleti
         assert.equal(first.members.length, 1);
         assert.ok(first.nextCursor);
         assert.deepEqual(Object.keys(first.members[0]).sort(), [
+          'blockedByMe',
           'displayName',
           'joinedAt',
           'role',
