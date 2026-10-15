@@ -1,7 +1,7 @@
 {
   "name": "woori_server",
   "product": "우리",
-  "status": "group-lifecycle-management",
+  "status": "photo-dates-and-memories",
   "plans": "/Users/parkmoonseok/.Codex/projects/woori_server/plans",
   "sharedPlan": "/Users/parkmoonseok/.Codex/projects/woori/plans/00-product-plan.md",
   "implemented": [
@@ -34,7 +34,10 @@
     "name/email account recovery with generic responses and rate limits; hashed one-time 30-minute reset tokens with transactional session/push revocation and login-race fencing; current-user profile name update",
     "active-member roster with minimal fields and bounded pagination; owner-scoped rename/removal/ownership transfer/deletion and member leave",
     "group-first transactional locking across invitations, album writes and lifecycle changes; serializable raw SQL conflict retry",
-    "durable bounded group cleanup integrated with media worker, quota consistency, retry and late-publication reopening; real R2 group deletion verified with isolated synthetic fixture"
+    "durable bounded group cleanup integrated with media worker, quota consistency, retry and late-publication reopening; real R2 group deletion verified with isolated synthetic fixture",
+    "membership-scoped today/month memories with fixed Korean UTC+09 calendar, leap-day policy, bounded cursor pagination and per-user hide/restore",
+    "manual capture date above validated EXIF above upload date; owner/uploader editing with date-source labels and restore",
+    "real R2 EXIF upload and bounded existing-photo backfill verified with synthetic images; manual date preserved during concurrent backfill"
   ],
   "notImplemented": [
     "production Supabase/Railway/R2 provisioning and deployment",
@@ -44,7 +47,8 @@
     "production backup and restore validation",
     "background image processing queue (current upload completion is synchronous)",
     "native FCM/APNs subscriptions and dispatch, upload/reaction push bundling",
-    "production Web Push setup and iPhone/Android physical-device receipt verification"
+    "production Web Push setup and iPhone/Android physical-device receipt verification",
+    "automatic memory push notifications"
   ],
   "deployment": {
     "api": "Railway paid; Serverless off",
@@ -66,7 +70,7 @@
     "authorization": "RLS allows server runtime role across granted rows; per-user group isolation is enforced in API membership queries",
     "runtimeGrants": "prisma/runtime-grants.sql",
     "pendingMigration": null,
-    "latestLocalMigration": "20261018000000_web_push (applied to woori_dev with user approval; remote not applied)"
+    "latestLocalMigration": "20261019000000_photo_memories (applied to woori_dev with user approval; remote not applied)"
   },
   "runtimeConfiguration": {
     "PORT": "default 3001",
@@ -100,5 +104,15 @@
     "retention": "group/album/photo tombstones and comment metadata retained; this is not an account-data purge",
     "cleanupDelay": "existing upload/processing expiry grace preserved; requires running API and separate worker",
     "databaseChanges": "no new migration or runtime grants required"
+  },
+  "photoMemories": {
+    "datePriority": "manual calendar date > EXIF DateTimeOriginal > upload date",
+    "calendar": "fixed UTC+09:00; today/month use previous years; February 29 appears February 28 in non-leap years; today excluded from month",
+    "exif": "explicit offset honored; missing offset assumes +09:00; malformed/future dates fall back to upload",
+    "permissions": "current active member reads/hides own memories; uploader or active owner edits shared capture date",
+    "hiding": "personal and reversible; album content and other members unaffected",
+    "push": "no automatic memory push",
+    "verification": "isolated PostgreSQL, real private R2 synthetic JPEGs, Chrome owner/member and 390px responsive viewport",
+    "backfill": "pnpm photos:backfill-dates is dry-run; --apply --limit 100 processes bounded originals, optional --after UUID. Local woori_dev/test DB only; errors remain retryable. Existing local eligible count was 0 on 2026-10-15."
   }
 }

@@ -29,7 +29,8 @@
     "policy:ci": "node scripts/policy/gate.mjs ci",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "push:keys": "node scripts/generate-web-push-env.mjs"
+    "push:keys": "node scripts/generate-web-push-env.mjs",
+    "photos:backfill-dates": "node --env-file-if-exists=.env scripts/backfill-photo-dates.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1151.0",

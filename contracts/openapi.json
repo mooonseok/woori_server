@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "우리 인증·그룹·초대·앨범·사진 API",
-    "version": "0.8.0",
-    "description": "현재 구현된 Nest API 계약. 모든 응답은 Cache-Control: no-store이다. 브라우저 요청은 credentials: include를 사용한다. 운영 세션은 HttpOnly·Secure·SameSite=Lax인 __Host-woori_session 쿠키, 비운영은 woori_session 쿠키이다. 모든 변경 메서드는 허용 목록과 정확히 일치하는 Origin 및 X-Woori-Request: 1을 요구하며 본문은 application/json을 사용한다. 알 수 없는 요청 필드는 400으로 거절한다. API는 서버 프레임워크 전역 prefix 없이 아래 경로를 직접 제공한다. 회원 한정 앨범 목록 조회는 실제 DB에 연결되어 있다. 앨범 생성과 비공개 R2 사진 업로드·조회가 구현되어 있다. 업로드는 허가→R2 PUT→완료 순서이며 완료 시 서버에서 파일을 검증하고 파생본을 생성한다. 사진 콘텐츠는 매 요청 현재 멤버십을 확인하며 private, no-store이다. 웹 푸시 구독·세션 연결·Outbox 발송 및 수신 직전 표시 권한 검사가 구현되어 있다. 네이티브 푸시·관리자 운영 기능은 포함하지 않는다. 일반/위치 댓글과 사용자당 사진별 이모지 반응을 DB에 저장한다. 모든 조회 및 변경은 현재 활성 멤버십, 활성 그룹, 삭제되지 않은 앨범과 READY 사진을 검사한다. 댓글은 작성자만 수정하고 작성자 또는 그룹장만 삭제한다. 이름·이메일 계정 복구, 일회용 비밀번호 재설정과 현재 계정 이름 수정이 구현되어 있다. 그룹 구성원 조회·이름 수정·탈퇴·내보내기·소유권 이전·비동기 그룹 삭제가 구현되어 있다."
+    "version": "0.9.0",
+    "description": "현재 구현된 Nest API 계약. 모든 응답은 Cache-Control: no-store이다. 브라우저 요청은 credentials: include를 사용한다. 운영 세션은 HttpOnly·Secure·SameSite=Lax인 __Host-woori_session 쿠키, 비운영은 woori_session 쿠키이다. 모든 변경 메서드는 허용 목록과 정확히 일치하는 Origin 및 X-Woori-Request: 1을 요구하며 본문은 application/json을 사용한다. 알 수 없는 요청 필드는 400으로 거절한다. API는 서버 프레임워크 전역 prefix 없이 아래 경로를 직접 제공한다. 회원 한정 앨범 목록 조회는 실제 DB에 연결되어 있다. 앨범 생성과 비공개 R2 사진 업로드·조회가 구현되어 있다. 업로드는 허가→R2 PUT→완료 순서이며 완료 시 서버에서 파일을 검증하고 파생본을 생성한다. 사진 콘텐츠는 매 요청 현재 멤버십을 확인하며 private, no-store이다. 웹 푸시 구독·세션 연결·Outbox 발송 및 수신 직전 표시 권한 검사가 구현되어 있다. 네이티브 푸시·관리자 운영 기능은 포함하지 않는다. 일반/위치 댓글과 사용자당 사진별 이모지 반응을 DB에 저장한다. 모든 조회 및 변경은 현재 활성 멤버십, 활성 그룹, 삭제되지 않은 앨범과 READY 사진을 검사한다. 댓글은 작성자만 수정하고 작성자 또는 그룹장만 삭제한다. 이름·이메일 계정 복구, 일회용 비밀번호 재설정과 현재 계정 이름 수정이 구현되어 있다. 그룹 구성원 조회·이름 수정·탈퇴·내보내기·소유권 이전·비동기 그룹 삭제가 구현되어 있다. 촬영일 출처·수동 수정, KST 날짜 기반 개인 추억 조회·숨김·복원이 구현되어 있다. 추억 푸시는 자동 발송하지 않는다."
   },
   "tags": [
     {
@@ -6920,6 +6920,729 @@
           }
         }
       }
+    },
+    "/v1/groups/{groupId}/memories": {
+      "get": {
+        "operationId": "listPhotoMemories",
+        "summary": "현재 그룹의 내 추억 조회",
+        "description": "서버 KST(UTC+09:00 고정) 오늘 기준. today는 이전 연도 같은 월일이며 평년 2월 28일에는 과거 2월 29일도 포함. month는 이전 연도 같은 달 중 today 후보 제외. hidden은 날짜와 무관한 본인 숨김 사진. 활성 멤버·그룹·앨범과 READY 사진만 반환. 개인 숨김은 앨범/다른 멤버에 영향 없음. effectiveDate DESC,id DESC 정렬. 커서는 같은 필터에서 여전히 보이는 사진 ID여야 하며 상태 변경 시 404 후 처음부터 재조회. 촬영일/숨김 변경 후 커서를 초기화한다. 추억 푸시 발송 없음.",
+        "tags": ["photos"],
+        "security": [
+          {
+            "ProductionSession": []
+          },
+          {
+            "DevelopmentSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["today", "month", "hidden"],
+              "default": "today"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 30,
+              "default": 12
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "잘못된 UUID·본문·쿼리 또는 알 수 없는 필드.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTHENTICATION_REQUIRED: 활성 사용자 세션 필요.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "GROUP_OWNER_REQUIRED: 그룹장 권한 필요. 변경 요청은 REQUEST_ORIGIN_REJECTED 또는 JSON_REQUIRED도 가능.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "PHOTO_NOT_FOUND: 현재 활성 멤버가 아니거나 그룹·앨범·사진이 없거나 삭제됨. 촬영일 수정 권한 없음도 404.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "TOO_MANY_REQUESTS: 날짜·숨김 변경은 사용자당 15분 100회 공유 한도.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR: 내부 오류 원문은 공개하지 않음.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "성공",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhotoMemoriesResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/groups/{groupId}/memories/{photoId}/hidden": {
+      "put": {
+        "operationId": "hidePhotoMemory",
+        "summary": "내 추억에서 사진 숨김",
+        "description": "세션 본인에게만 적용. 활성 멤버는 다른 멤버가 올린 사진도 자신의 추억에서 숨길 수 있다. 중복 요청은 멱등적이며 사진 원본·앨범·댓글은 변경하지 않는다.",
+        "tags": ["photos"],
+        "security": [
+          {
+            "ProductionSession": []
+          },
+          {
+            "DevelopmentSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "photoId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/WooriRequest"
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "잘못된 UUID·본문·쿼리 또는 알 수 없는 필드.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTHENTICATION_REQUIRED: 활성 사용자 세션 필요.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "GROUP_OWNER_REQUIRED: 그룹장 권한 필요. 변경 요청은 REQUEST_ORIGIN_REJECTED 또는 JSON_REQUIRED도 가능.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "PHOTO_NOT_FOUND: 현재 활성 멤버가 아니거나 그룹·앨범·사진이 없거나 삭제됨. 촬영일 수정 권한 없음도 404.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "TOO_MANY_REQUESTS: 날짜·숨김 변경은 사용자당 15분 100회 공유 한도.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR: 내부 오류 원문은 공개하지 않음.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "성공",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "restorePhotoMemory",
+        "summary": "숨긴 추억 사진 다시 표시",
+        "description": "세션 본인에게만 적용. 활성 멤버는 다른 멤버가 올린 사진도 자신의 추억에서 숨길 수 있다. 중복 요청은 멱등적이며 사진 원본·앨범·댓글은 변경하지 않는다.",
+        "tags": ["photos"],
+        "security": [
+          {
+            "ProductionSession": []
+          },
+          {
+            "DevelopmentSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "photoId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/WooriRequest"
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "잘못된 UUID·본문·쿼리 또는 알 수 없는 필드.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTHENTICATION_REQUIRED: 활성 사용자 세션 필요.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "GROUP_OWNER_REQUIRED: 그룹장 권한 필요. 변경 요청은 REQUEST_ORIGIN_REJECTED 또는 JSON_REQUIRED도 가능.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "PHOTO_NOT_FOUND: 현재 활성 멤버가 아니거나 그룹·앨범·사진이 없거나 삭제됨. 촬영일 수정 권한 없음도 404.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "TOO_MANY_REQUESTS: 날짜·숨김 변경은 사용자당 15분 100회 공유 한도.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR: 내부 오류 원문은 공개하지 않음.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "성공",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/groups/{groupId}/albums/{albumId}/photos/{photoId}/capture-date": {
+      "patch": {
+        "operationId": "updatePhotoCaptureDate",
+        "summary": "사진 촬영일 수정·복원",
+        "description": "현재 활성 그룹장 또는 업로더만 수정. 수동 날짜는 별도 DATE 필드에 저장해 EXIF와 독립적으로 유지. 백필은 수동 날짜를 덮어쓰지 않는다. EXIF offset 없으면 UTC+09:00 가정. 원본/GPS/파일은 수정하지 않는다.",
+        "tags": ["photos"],
+        "security": [
+          {
+            "ProductionSession": []
+          },
+          {
+            "DevelopmentSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "albumId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "photoId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/WooriRequest"
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "잘못된 UUID·본문·쿼리 또는 알 수 없는 필드.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTHENTICATION_REQUIRED: 활성 사용자 세션 필요.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "GROUP_OWNER_REQUIRED: 그룹장 권한 필요. 변경 요청은 REQUEST_ORIGIN_REJECTED 또는 JSON_REQUIRED도 가능.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "PHOTO_NOT_FOUND: 현재 활성 멤버가 아니거나 그룹·앨범·사진이 없거나 삭제됨. 촬영일 수정 권한 없음도 404.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "TOO_MANY_REQUESTS: 날짜·숨김 변경은 사용자당 15분 100회 공유 한도.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR: 내부 오류 원문은 공개하지 않음.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "성공",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhotoResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaptureDateRequest"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -7493,7 +8216,10 @@
           "capturedAt",
           "createdAt",
           "status",
-          "canDelete"
+          "canDelete",
+          "effectiveDate",
+          "dateSource",
+          "canEditCaptureDate"
         ],
         "properties": {
           "id": {
@@ -7530,6 +8256,19 @@
           "canDelete": {
             "type": "boolean",
             "description": "현재 ACTIVE 그룹장 또는 사진 업로더에게 true. 서버가 변경 시 권한을 재검증한다."
+          },
+          "effectiveDate": {
+            "type": "string",
+            "format": "date",
+            "description": "수동 날짜 > EXIF를 UTC+09:00로 변환한 날짜 > 업로드 날짜. KST 고정 기준."
+          },
+          "dateSource": {
+            "type": "string",
+            "enum": ["USER", "EXIF", "UPLOAD"]
+          },
+          "canEditCaptureDate": {
+            "type": "boolean",
+            "description": "현재 활성 그룹장 또는 업로더만 촬영일 수정 가능."
           }
         }
       },
@@ -8390,6 +9129,76 @@
           "userId": {
             "type": "string",
             "format": "uuid"
+          }
+        }
+      },
+      "PhotoMemoryItem": {
+        "type": "object",
+        "required": [
+          "photo",
+          "albumTitle",
+          "effectiveDate",
+          "dateSource",
+          "yearsAgo"
+        ],
+        "properties": {
+          "photo": {
+            "$ref": "#/components/schemas/MediaPhoto"
+          },
+          "albumTitle": {
+            "type": "string"
+          },
+          "effectiveDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "dateSource": {
+            "type": "string",
+            "enum": ["USER", "EXIF", "UPLOAD"]
+          },
+          "yearsAgo": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "PhotoMemoriesResponse": {
+        "type": "object",
+        "required": ["asOf", "timeZone", "kind", "items", "nextCursor"],
+        "properties": {
+          "asOf": {
+            "type": "string",
+            "format": "date"
+          },
+          "timeZone": {
+            "type": "string",
+            "const": "Asia/Seoul"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["today", "month", "hidden"]
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PhotoMemoryItem"
+            }
+          },
+          "nextCursor": {
+            "type": ["string", "null"],
+            "format": "uuid"
+          }
+        }
+      },
+      "CaptureDateRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["date"],
+        "properties": {
+          "date": {
+            "type": ["string", "null"],
+            "format": "date",
+            "description": "1800-01-01부터 KST 오늘까지의 실제 날짜. null은 수동 날짜만 해제해 EXIF 또는 업로드일로 복원."
           }
         }
       }

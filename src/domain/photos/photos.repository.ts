@@ -1,3 +1,4 @@
+import { effectivePhotoDate } from '../memories/memory-date';
 import { recordPhotoActivity } from '../notifications/notification-events';
 import {
   ConflictException,
@@ -19,6 +20,8 @@ export const photoSummary = {
   width: true,
   height: true,
   capturedAt: true,
+  manualCapturedDate: true,
+  captureDateSource: true,
   createdAt: true,
   status: true,
 } satisfies Prisma.PhotoSelect;
@@ -303,6 +306,9 @@ export class PhotosRepository {
         data: {
           status: 'READY',
           bytes,
+          capturedAt: original.capturedAt ?? null,
+          captureDateSource: original.capturedAt ? 'EXIF' : null,
+          captureMetadataCheckedAt: new Date(),
           width: original.width,
           height: original.height,
           reservedBytes: 0n,
@@ -440,6 +446,7 @@ export class PhotosRepository {
       width: number | null;
       height: number | null;
       capturedAt: Date | null;
+      manualCapturedDate?: Date | null;
       createdAt: Date;
       status: string;
     },
@@ -452,6 +459,8 @@ export class PhotosRepository {
       width: photo.width,
       height: photo.height,
       capturedAt: photo.capturedAt,
+      ...effectivePhotoDate(photo),
+      canEditCaptureDate: canDelete,
       createdAt: photo.createdAt,
       status: photo.status,
       canDelete,

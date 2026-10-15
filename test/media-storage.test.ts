@@ -239,3 +239,61 @@ test('partial publishing failure cleans this attempt and releases processing cap
     3
   );
 });
+
+test('upload and backfill extract only original capture date while preserving source bytes', async () => {
+  const storage = new MemoryStorage();
+  storage.input = await sharp(await photo())
+    .withExif({
+      IFD2: {
+        DateTimeOriginal: '2020:02:29 12:30:00',
+        OffsetTimeOriginal: '+09:00',
+      },
+    })
+    .jpeg()
+    .toBuffer();
+  const original = Buffer.from(storage.input);
+  const variants = await storage.process(
+    'staging/dated',
+    'image/jpeg',
+    original.length,
+    'photos/dated/attempt'
+  );
+  assert.equal(
+    variants[0].capturedAt?.toISOString(),
+    '2020-02-29T03:30:00.000Z'
+  );
+  assert.equal(variants[1].capturedAt, undefined);
+  assert.deepEqual(storage.written.get(variants[0].objectKey), original);
+  assert.equal(
+    (
+      await storage.captureDate(variants[0].objectKey, original.length)
+    )?.toISOString(),
+    '2020-02-29T03:30:00.000Z'
+  );
+  for (const variant of variants.slice(1))
+    assert.equal(
+      (await sharp(storage.written.get(variant.objectKey)!).metadata()).exif,
+      undefined
+    );
+});
+
+test('invalid optional EXIF date falls back without rejecting a valid upload or backfill', async () => {
+  const storage = new MemoryStorage();
+  storage.input = await sharp(await photo())
+    .withExif({ IFD2: { DateTimeOriginal: '2021:02:29 12:30:00' } })
+    .jpeg()
+    .toBuffer();
+  const original = Buffer.from(storage.input);
+  const variants = await storage.process(
+    'staging/invalid-date',
+    'image/jpeg',
+    original.length,
+    'photos/invalid-date/attempt'
+  );
+  assert.equal(variants[0].capturedAt, null);
+  assert.equal(
+    await storage.captureDate(variants[0].objectKey, original.length),
+    null
+  );
+  assert.deepEqual(storage.written.get(variants[0].objectKey), original);
+});
