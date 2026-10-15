@@ -1,7 +1,7 @@
 {
   "name": "woori_server",
   "product": "우리",
-  "status": "account-settings-implemented-mobile-validation-pending",
+  "status": "account-deletion-implemented-mobile-validation-pending",
   "plans": "/Users/parkmoonseok/.Codex/projects/woori_server/plans",
   "sharedPlan": "/Users/parkmoonseok/.Codex/projects/woori/plans/00-product-plan.md",
   "implemented": [
@@ -41,7 +41,8 @@
     "durable uploader-scoped photo processing queue with fenced worker retries, quota and membership/delete race checks; legacy synchronous complete endpoint retained",
     "bounded local read-only DB/R2 photo-prefix reconciliation report; no automatic orphan deletion",
     "60MP image validation, bounded sharp cache/concurrency, real 48MP JPEG and EXIF orientation tests",
-    "authenticated password/email changes with current-password reauthentication, single-use account-bound email confirmation and all-session/push revocation"
+    "authenticated password/email changes with current-password reauthentication, single-use account-bound email confirmation and all-session/push revocation",
+    "member account deletion with ownership preflight, password reauthentication, atomic identity/private-record erasure, shared-content retention and fresh-signup isolation"
   ],
   "notImplemented": [
     "production Supabase/Railway/R2 provisioning and deployment",
@@ -52,7 +53,8 @@
     "production Web Push setup and iPhone/Android physical-device receipt verification",
     "automatic memory push notifications",
     "global bucket orphan inventory and automatic orphan deletion",
-    "HEIC pixel decoding and physical-device photo workflow validation"
+    "HEIC pixel decoding and physical-device photo workflow validation",
+    "service guidance"
   ],
   "deployment": {
     "api": "Railway paid; Serverless off",
@@ -133,7 +135,7 @@
     "memory": "sharp cache 32MiB, concurrency 1 and max two concurrent processing calls; these are not total process RSS limits. Benchmark combined API/worker memory before deployment."
   },
   "accountSettings": {
-    "scope": "MyPage settings, authenticated password change and new-email verification; W05 account deletion/service guidance remain pending.",
+    "scope": "MyPage settings, authenticated password change and new-email verification; account deletion is described separately below. W05 service guidance remains pending.",
     "password": "Current password required; 12+ character new password; success revokes all sessions, push bindings and outstanding email tokens.",
     "email": "Current password required to request; old email remains until authenticated account confirms a single-use 30-minute token; latest request only. New email becomes verified.",
     "revocation": "Confirmation revokes all sessions, push bindings and outstanding email tokens; client clears private state and requires login and per-device push reconnection. Already handed-off provider messages cannot be recalled.",
@@ -143,5 +145,18 @@
     "localMigration": "20261021000000_account_settings applied to 127.0.0.1:55439/woori_dev with explicit approval; nullable VARCHAR(254) verified, no new grants or existing-data deletion.",
     "browserLimit": "Desktop Chrome owner/member flows verified. Requested 390px browser viewport remained 1512px, so mobile layout and physical-device validation are not claimed. Changed-email account was confirmed and logged out; no additional post-email login was performed.",
     "cleanup": "Synthetic accounts/group removed by dropping guarded isolated fixture DB after browser logout. No R2 objects were created. Private fixture mail/session state removed; normal local API restored on 3001 using private .env."
+  },
+  "accountDeletion": {
+    "scope": "GET/POST /v1/auth/account-deletion; current password and exact Korean confirmation required; protected MyPage entry and public success screen.",
+    "ownership": "Active owned groups block deletion. Transfer ownership or request group deletion first; DELETING groups may continue asynchronously.",
+    "retention": "READY photos, albums, general/pin comments and reactions remain. Author is displayed as 탈퇴한 회원. Original EXIF/location and user-written personal content may remain; UI asks users to remove unwanted content before deletion.",
+    "identity": "Immediately replace username/email with random unusable values, clear password and verifiedAt, anonymize name. Keep internal user row for shared-content relationships; no restoration. Fresh signup with released username/email uses a new ID without old memberships.",
+    "privateData": "Delete sessions, email tokens, push installations, own notifications/activities/deliveries/outbox and personal preferences. Revoke issued invitations and leave memberships. Already downloaded files/provider-delivered notifications cannot be recalled.",
+    "uploads": "Only PENDING/PROCESSING/FAILED uploads are cancelled and queued for R2 cleanup after signed PUT/processing expiry grace; READY originals remain unchanged.",
+    "concurrency": "Group/membership/user/session lock order, active-user creation/join fences, group-set retry and user-before-session push registration locking.",
+    "verification": "Server: 18 policy, 73 unit, 84 isolated PostgreSQL integration tests including 9 account deletion cases; client: 16 policy, 85 functional tests. Types, lint/boundaries, format, builds passed. Chrome owner blocking/group-management navigation, member deletion success and other-member anonymous general/pin comment viewing verified. Actual R2 original SHA256 preserved, old and secondary sessions denied, rejoined account denied old content. Pending staging removed by worker while READY original stayed accessible.",
+    "database": "No schema migration. With explicit user approval, DELETE grants on 10 private-data tables applied to 127.0.0.1:55439/woori_dev; existing FOR ALL RLS retained, no data changed by grant application. Production DB untouched. Rollback permission change by revoking only these newly added DELETE grants; completed account deletion is not reversible.",
+    "limits": "Physical-device/mobile layout and large-account transaction duration remain unverified. API deletion transaction timeout is 30 seconds.",
+    "cleanup": "Synthetic group DELETED, quota zero, both test photo prefixes and staging objects absent in R2. Browser logged out; isolated fixture DB and private mail/session state removed; normal local API restored."
   }
 }

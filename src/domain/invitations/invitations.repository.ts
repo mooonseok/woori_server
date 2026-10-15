@@ -2,6 +2,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/modules/prisma/prisma.service';
@@ -174,6 +175,11 @@ export class InvitationsRepository {
       });
       if (!initial) invalidInvitation();
       await tx.$queryRaw`SELECT id FROM woori.groups WHERE id=${initial.groupId}::uuid FOR UPDATE`;
+      await tx.$queryRaw`SELECT "groupId" FROM woori.memberships WHERE "groupId"=${initial.groupId}::uuid AND "userId"=${userId}::uuid FOR UPDATE`;
+      const users = await tx.$queryRaw<
+        { id: string }[]
+      >`SELECT id FROM woori.users WHERE id=${userId}::uuid AND status='ACTIVE' FOR SHARE`;
+      if (!users.length) throw new UnauthorizedException();
       const invitation = await this.findAvailable(tx, lookup);
       const key = { groupId: invitation.groupId, userId };
       const member = await tx.membership.findUnique({

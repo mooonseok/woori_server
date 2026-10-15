@@ -2009,7 +2009,7 @@ test('real PostgreSQL: authentication, private groups and single-use invitation 
           }
         );
         await notifications.test(
-          'runtime role can persist inbox data without hard-delete or truncate; push endpoints remain server-only',
+          'runtime role permits private inbox erasure for account deletion but never truncate; push endpoints remain server-only',
           async () => {
             const runtime = new Pool({
               connectionString: requireIsolatedDatabase('DATABASE_URL'),
@@ -2029,7 +2029,7 @@ test('real PostgreSQL: authentication, private groups and single-use invitation 
                 assert.deepEqual(result.rows[0], {
                   read: true,
                   insert: true,
-                  delete: false,
+                  delete: true,
                   truncate: false,
                 });
               }

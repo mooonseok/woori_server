@@ -1,3 +1,5 @@
+import { AccountDeletionService } from './account-deletion.service';
+import { AccountDeletionRepository } from './account-deletion.repository';
 import { AccountSettingsRepository } from './account-settings.repository';
 import { AccountSettingsService } from './account-settings.service';
 import { RecoveryRepository } from './recovery.repository';
@@ -13,6 +15,8 @@ import { MailService } from './mail.service';
   imports: [PrismaModule],
   controllers: [AuthController],
   providers: [
+    AccountDeletionRepository,
+    AccountDeletionService,
     AccountSettingsRepository,
     AccountSettingsService,
     AuthService,

@@ -1,5 +1,12 @@
 import { Transform } from 'class-transformer';
-import { IsEmail, IsString, Length, Matches, MaxLength } from 'class-validator';
+import {
+  Equals,
+  IsEmail,
+  IsString,
+  Length,
+  Matches,
+  MaxLength,
+} from 'class-validator';
 const normalize = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim().toLowerCase() : value;
 export class LoginDto {
@@ -71,4 +78,12 @@ export class RequestEmailChangeDto {
   @IsEmail()
   @MaxLength(254)
   newEmail!: string;
+}
+
+export class DeleteAccountDto {
+  @IsString()
+  @Length(12, 128)
+  currentPassword!: string;
+  @Equals('탈퇴')
+  confirmation!: string;
 }

@@ -101,15 +101,24 @@
         "Resend dashboard: new-address confirmation and old-address change notice both delivered. Chrome success page displayed email-changed/login/reconnect guidance; other open account-settings tab became unauthenticated. Member re-login and own unchanged settings verified afterward. No extra owner login after email change was performed.",
         "390px viewport request remained 1512px in actual DOM even in a new tab; mobile layout validation is not claimed. Temporary viewport override reset.",
         "Browser logged out; guarded isolated fixture DB and private fixture mail/session state removed, no R2 objects created. Normal local API restored on 3001 using updated private sender configuration. Existing local accounts and production DB preserved. No commit or push performed. Account deletion and service guidance remain pending, so W05 stays in_progress.",
-        "User requested repository-local commits in the established portfolio format; implementation and verification records included without push. W05 remains in_progress for mobile validation and remaining account lifecycle/service guidance."
+        "User requested repository-local commits in the established portfolio format; implementation and verification records included without push. W05 remains in_progress for mobile validation and remaining account lifecycle/service guidance.",
+        "2026-10-15: account settings PR #13 merged. User approved next account-deletion slice: transfer/delete owned groups first, retain shared photos/comments as departed member, remove account credentials immediately without restore, allow fresh signup with released username/email. Implementation on feature/account-deletion; no commit/push requested.",
+        "Member account deletion implemented: owned active groups block; shared READY photos/comments/reactions retained anonymously; identity/private records removed atomically; fresh signup receives new ID and no old group access. Incomplete uploads use existing cleanup queue.",
+        "Server checks passed: 18 policy, 73 unit, 84 isolated PostgreSQL integration including 9 deletion cases; client checks passed: 16 policy, 85 functional tests, types/lint/boundaries/format and isolated-copy web/admin builds. Independent review found and fixed push-registration/deletion lock inversion; concurrency checks passed. New test cleanup jobs initially interfered with an existing suite, fixed by cleaning only its own fixtures; existing assertions unchanged.",
+        "Chrome owner deletion blocked and group-management navigation verified. With action-time user approval, synthetic member deletion completed; remaining owner viewed preserved photo plus general/pin comments as 탈퇴한 회원. API/DB proved identity and personal records removed, both old sessions 401, original SHA256 unchanged, reaction retained; same username/email signup created new user ID and old photo access returned 404.",
+        "With explicit user approval, added only DELETE grants for 10 private-data tables to local 127.0.0.1:55439/woori_dev. No schema migration, no current data deletion, no RLS change or production DB access.",
+        "Actual R2 pending staging cleanup completed while READY original remained accessible. Full synthetic cleanup then verified group DELETED, usedBytes 0, both photo prefixes empty and staging absent; private fixture DB/mail/state removed and browser logged out. Normal local API restored. No commit/push. Mobile layout/physical-device and large-account load tests remain unverified; service guidance remains pending, so W05 stays in_progress.",
+        "User requested local commits for the completed account-deletion slice in the portfolio message format; no push authorized. Implementation, verification and pending mobile/load limits are recorded in this commit."
       ],
       "implementationRefs": [
         "feature/account-settings; implementation and verification recorded in this commit; mobile layout validation pending",
         "project.json",
-        "src/domain/auth/account-settings.repository.ts"
+        "src/domain/auth/account-settings.repository.ts",
+        "feature/account-deletion; implementation and verification recorded in this commit; no push"
       ],
       "peerEvidence": [
-        "Client/server aligned with contracts/openapi.json 0.11.0."
+        "Client/server aligned with contracts/openapi.json 0.11.0.",
+        "Client/server aligned with contracts/openapi.json 0.12.0 account-deletion preflight and submission contract."
       ]
     },
     {
