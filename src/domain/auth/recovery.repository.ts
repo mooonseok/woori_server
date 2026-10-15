@@ -7,19 +7,23 @@ import {
 import { PrismaService } from '../../common/modules/prisma/prisma.service';
 
 const PURPOSE = 'RESET_PASSWORD';
+// A suspended member may still recover the username or reset the password (the
+// reset revokes credentials and never creates a session); login keeps answering
+// 403 ACCOUNT_SUSPENDED and nothing here changes the account status.
+const RECOVERABLE = { in: ['ACTIVE' as const, 'SUSPENDED' as const] };
 @Injectable()
 export class RecoveryRepository {
   constructor(private readonly prisma: PrismaService) {}
   findAccount(name: string, email: string) {
     return this.prisma.client.user.findFirst({
-      where: { displayName: name, email, status: 'ACTIVE' },
+      where: { displayName: name, email, status: RECOVERABLE },
     });
   }
   async issue(userId: string, name: string, email: string, tokenHash: string) {
     return this.prisma.client.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM woori.users WHERE id=${userId}::uuid FOR UPDATE`;
       const user = await tx.user.findFirst({
-        where: { id: userId, displayName: name, email, status: 'ACTIVE' },
+        where: { id: userId, displayName: name, email, status: RECOVERABLE },
       });
       if (!user) return false;
       await tx.emailToken.updateMany({
@@ -45,7 +49,7 @@ export class RecoveryRepository {
       await tx.$queryRaw`SELECT id FROM woori.users WHERE id=${initial.userId}::uuid FOR UPDATE`;
       const now = new Date();
       const user = await tx.user.findFirst({
-        where: { id: initial.userId, status: 'ACTIVE' },
+        where: { id: initial.userId, status: RECOVERABLE },
       });
       if (!user) throw this.invalid();
       const used = await tx.emailToken.updateMany({

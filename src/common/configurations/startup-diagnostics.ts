@@ -29,6 +29,10 @@ export function startupFailure(error: unknown, port?: number): string {
       'PORT는 1~65535 사이의 정수여야 합니다.',
     'TRUST_PROXY_HOPS must be 0 or 1 after verifying proxy topology':
       'TRUST_PROXY_HOPS는 프록시 구성을 확인한 뒤 0 또는 1로 설정하세요.',
+    'ADMIN_WEB_ORIGIN must be an exact HTTP(S) origin listed in CORS_ALLOWED_ORIGINS':
+      'ADMIN_WEB_ORIGIN에는 관리자 웹의 정확한 http(s)://호스트:포트 origin을 넣고 같은 값을 CORS_ALLOWED_ORIGINS에도 추가하세요. 관리자 기능을 쓰지 않으려면 비워 두세요.',
+    'ADMIN_TOTP_ENCRYPTION_KEY must be a base64 32-byte key (value redacted)':
+      'ADMIN_TOTP_ENCRYPTION_KEY는 32바이트 base64 키여야 합니다. pnpm admin:keys로 새 키 파일을 만들 수 있습니다. 설정값은 출력하지 않습니다.',
     'CORS_ALLOWED_ORIGINS must contain exact HTTP(S) origins':
       'CORS_ALLOWED_ORIGINS에는 http(s)://호스트:포트 형식의 origin을 쉼표로 구분해 넣으세요. 경로와 마지막 /는 제외하세요.',
   };

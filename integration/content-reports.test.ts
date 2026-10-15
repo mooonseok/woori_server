@@ -159,7 +159,7 @@ test('isolated PostgreSQL: operator-only content and member reports', async (t) 
     };
 
     await t.test(
-      'migration enables RLS and the runtime role can file and anonymize but never delete reports',
+      'migration enables RLS and the runtime role can file, anonymize and process but never delete or retarget reports',
       async () => {
         const rls = await admin.query(
           "SELECT c.relrowsecurity, EXISTS(SELECT 1 FROM pg_policies p WHERE p.schemaname='woori' AND p.tablename='content_reports' AND p.policyname='server_api_access') AS policy FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='woori' AND c.relname='content_reports'"
@@ -175,7 +175,9 @@ test('isolated PostgreSQL: operator-only content and member reports', async (t) 
               "SELECT has_table_privilege(current_user, 'woori.content_reports', 'SELECT') AS read, has_table_privilege(current_user, 'woori.content_reports', 'INSERT') AS insert, has_table_privilege(current_user, 'woori.content_reports', 'UPDATE') AS update, has_table_privilege(current_user, 'woori.content_reports', 'DELETE') AS delete, has_table_privilege(current_user, 'woori.content_reports', 'TRUNCATE') AS truncate"
             )
           ).rows[0];
-          // UPDATE is column-scoped: only the withdrawal erasure of detail.
+          // UPDATE is column-scoped: the withdrawal erasure of detail and the
+          // admin API's processing state (W06). Never identity, reporter,
+          // target or reason.
           assert.deepEqual(privileges, {
             read: true,
             insert: true,
@@ -185,19 +187,25 @@ test('isolated PostgreSQL: operator-only content and member reports', async (t) 
           });
           const columns = (
             await runtime.query(
-              "SELECT has_column_privilege(current_user, 'woori.content_reports', 'detail', 'UPDATE') AS detail, has_column_privilege(current_user, 'woori.content_reports', 'updatedAt', 'UPDATE') AS \"updatedAt\", has_column_privilege(current_user, 'woori.content_reports', 'status', 'UPDATE') AS status, has_column_privilege(current_user, 'woori.content_reports', 'resolvedAt', 'UPDATE') AS \"resolvedAt\", has_column_privilege(current_user, 'woori.content_reports', 'reason', 'UPDATE') AS reason"
+              "SELECT a.attname AS name FROM pg_attribute a WHERE a.attrelid='woori.content_reports'::regclass AND a.attnum>0 AND NOT a.attisdropped AND has_column_privilege(current_user, 'woori.content_reports', a.attname, 'UPDATE') ORDER BY a.attname"
             )
-          ).rows[0];
-          assert.deepEqual(columns, {
-            detail: true,
-            updatedAt: true,
-            status: false,
-            resolvedAt: false,
-            reason: false,
-          });
+          ).rows.map((row: { name: string }) => row.name);
+          assert.deepEqual(columns, [
+            'detail',
+            'resolution',
+            'resolvedAt',
+            'status',
+            'updatedAt',
+          ]);
           for (const statement of [
             'DELETE FROM woori.content_reports',
-            "UPDATE woori.content_reports SET status='RESOLVED'",
+            'TRUNCATE woori.content_reports',
+            "UPDATE woori.content_reports SET reason='SPAM'",
+            `UPDATE woori.content_reports SET "reporterId"='${randomUUID()}'`,
+            `UPDATE woori.content_reports SET "targetId"='${randomUUID()}'`,
+            `UPDATE woori.content_reports SET "targetUserId"='${randomUUID()}'`,
+            `UPDATE woori.content_reports SET "groupId"='${randomUUID()}'`,
+            'UPDATE woori.content_reports SET "targetType"=\'USER\'',
           ])
             await assert.rejects(
               runtime.query(statement),
@@ -651,7 +659,8 @@ test('isolated PostgreSQL: operator-only content and member reports', async (t) 
             status: 'RESOLVED',
           }),
         ]) {
-          const result = await op.expect(403);
+          // Member sessions are not admin sessions: 401 in the admin realm.
+          const result = await op.expect(401);
           assert.equal(result.body.code, 'ADMIN_AUTHENTICATION_REQUIRED');
         }
         assert.equal(

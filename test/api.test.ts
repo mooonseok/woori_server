@@ -8,7 +8,13 @@ import { runtimeConfig } from '../src/common/configurations/runtime.config';
 test('health contract, private routes, fabricated credentials and CORS', async () => {
   // No DB or cloud credentials are needed and no domain query is reachable.
   const old = process.env.CORS_ALLOWED_ORIGINS;
+  const oldAdmin = [
+    process.env.ADMIN_WEB_ORIGIN,
+    process.env.ADMIN_TOTP_ENCRYPTION_KEY,
+  ];
   process.env.CORS_ALLOWED_ORIGINS = 'https://app.example.test';
+  delete process.env.ADMIN_WEB_ORIGIN;
+  delete process.env.ADMIN_TOTP_ENCRYPTION_KEY;
   const app = await createApp();
   try {
     await app.listen(0, '127.0.0.1');
@@ -38,8 +44,6 @@ test('health contract, private routes, fabricated credentials and CORS', async (
       '/v1/inquiries/315097d9-f1a4-4202-ad40-455124a80cc2',
       '/v1/reports',
       '/v1/blocks',
-      '/v1/admin',
-      '/v1/admin/users',
     ]) {
       await api.get(path).expect(401);
       const res = await api
@@ -49,6 +53,19 @@ test('health contract, private routes, fabricated credentials and CORS', async (
         .set('X-User-Id', 'owner')
         .expect(401);
       assert.equal(res.body.code, 'AUTHENTICATION_REQUIRED');
+      assert.equal(res.headers['cache-control'], 'no-store');
+    }
+    // Without ADMIN_WEB_ORIGIN and ADMIN_TOTP_ENCRYPTION_KEY the admin realm is
+    // closed before any credential is examined; fabricated credentials of either
+    // realm never authorize it (no DB is configured, so nothing is looked up).
+    for (const path of ['/v1/admin', '/v1/admin/users', '/v1/admin/auth/me']) {
+      const res = await api
+        .get(path)
+        .set('Authorization', 'Bearer unsigned.fake.token')
+        .set('Cookie', `session=mock; woori_session=${'a'.repeat(43)}`)
+        .set('X-User-Id', 'owner')
+        .expect(503);
+      assert.equal(res.body.code, 'ADMIN_NOT_CONFIGURED');
       assert.equal(res.headers['cache-control'], 'no-store');
     }
     await api
@@ -79,6 +96,9 @@ test('health contract, private routes, fabricated credentials and CORS', async (
     await app.close();
     if (old === undefined) delete process.env.CORS_ALLOWED_ORIGINS;
     else process.env.CORS_ALLOWED_ORIGINS = old;
+    if (oldAdmin[0] !== undefined) process.env.ADMIN_WEB_ORIGIN = oldAdmin[0];
+    if (oldAdmin[1] !== undefined)
+      process.env.ADMIN_TOTP_ENCRYPTION_KEY = oldAdmin[1];
   }
 });
 test('CORS configuration rejects wildcard or URL paths', () => {

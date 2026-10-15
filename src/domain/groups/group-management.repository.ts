@@ -6,7 +6,11 @@ import {
 } from '@nestjs/common';
 import { Prisma, GroupStatus } from '@prisma/client';
 import { PrismaService } from '../../common/modules/prisma/prisma.service';
-import { groupSummary, groupSummarySelect } from './groups.repository';
+import {
+  groupSummary,
+  groupSummarySelect,
+  rosterUser,
+} from './groups.repository';
 
 @Injectable()
 export class GroupManagementRepository {
@@ -77,7 +81,8 @@ export class GroupManagementRepository {
         where: {
           groupId,
           status: 'ACTIVE',
-          user: { status: 'ACTIVE' },
+          // Suspended members stay listed (no suspension field is exposed).
+          user: rosterUser,
           ...(after ? { userId: { gt: after } } : {}),
         },
         orderBy: { userId: 'asc' },
@@ -136,6 +141,8 @@ export class GroupManagementRepository {
     await this.prisma.client.$transaction(async (tx) => {
       const { group, actor } = await this.lock(tx, groupId, userId, targetId);
       this.owner(group, actor, userId);
+      // Any non-owner membership may be removed, including a suspended
+      // member's (only the acting owner must be ACTIVE).
       const target = await tx.membership.findUnique({
         where: { groupId_userId: { groupId, userId: targetId } },
       });
@@ -159,6 +166,7 @@ export class GroupManagementRepository {
     return this.prisma.client.$transaction(async (tx) => {
       const { group, actor } = await this.lock(tx, groupId, userId, targetId);
       this.owner(group, actor, userId);
+      // Ownership goes to ACTIVE accounts only (a suspended target: 409).
       const target = await tx.membership.findFirst({
         where: {
           groupId,

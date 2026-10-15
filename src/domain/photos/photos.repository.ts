@@ -534,19 +534,23 @@ export class PhotosRepository {
         });
         if (!photo) return null;
         const members = await tx.$queryRaw<
-          { id: string }[]
-        >`SELECT u.id FROM woori.memberships m JOIN woori.users u ON u.id=m."userId" WHERE m."groupId"=${photo.groupId}::uuid AND m."userId"=${photo.uploaderId}::uuid AND m.status='ACTIVE' AND u.status='ACTIVE' FOR SHARE OF m,u`;
+          { status: string }[]
+        >`SELECT u.status::text AS status FROM woori.memberships m JOIN woori.users u ON u.id=m."userId" WHERE m."groupId"=${photo.groupId}::uuid AND m."userId"=${photo.uploaderId}::uuid AND m.status='ACTIVE' FOR SHARE OF m,u`;
         const album = await tx.album.findFirst({
           where: { id: photo.albumId, groupId: photo.groupId, deletedAt: null },
         });
+        // A suspended (non-ACTIVE) uploader's accepted jobs end FAILED so
+        // suspension also blocks new shared content.
         const error =
           groups[0].status !== 'ACTIVE' || !members.length || !album
             ? 'UPLOAD_ACCESS_REVOKED'
-            : !photo.processingDeadlineAt || photo.processingDeadlineAt <= now
-              ? 'UPLOAD_EXPIRED'
-              : photo.processingAttempts >= 5
-                ? 'PHOTO_PROCESSING_FAILED'
-                : null;
+            : members[0].status !== 'ACTIVE'
+              ? 'UPLOADER_INACTIVE'
+              : !photo.processingDeadlineAt || photo.processingDeadlineAt <= now
+                ? 'UPLOAD_EXPIRED'
+                : photo.processingAttempts >= 5
+                  ? 'PHOTO_PROCESSING_FAILED'
+                  : null;
         if (error) {
           await tx.photo.update({
             where: { id: photo.id },

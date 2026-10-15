@@ -1,6 +1,13 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/modules/prisma/prisma.service';
+// Group roster (members list and member counts) keeps suspended members: a
+// suspension blocks the member's own access only and is not shown to the family.
+// Withdrawn (DELETED) accounts are excluded.
+export const ROSTER_USER_STATUSES = ['ACTIVE', 'SUSPENDED'] as const;
+export const rosterUser = {
+  status: { in: [...ROSTER_USER_STATUSES] },
+} satisfies Prisma.UserWhereInput;
 
 export const groupSummarySelect = (userId: string) =>
   ({
@@ -13,10 +20,7 @@ export const groupSummarySelect = (userId: string) =>
     _count: {
       select: {
         memberships: {
-          where: {
-            status: 'ACTIVE' as const,
-            user: { status: 'ACTIVE' as const },
-          },
+          where: { status: 'ACTIVE' as const, user: rosterUser },
         },
       },
     },

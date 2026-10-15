@@ -152,7 +152,7 @@ test('isolated PostgreSQL: read-only notices and own member inquiries', async (t
     const hiddenIds = Object.values(hidden);
 
     await t.test(
-      'migration enables RLS and the runtime role cannot author notices or answer inquiries',
+      'migration enables RLS and the runtime role changes only admin-managed notice and inquiry columns',
       async () => {
         const rls = await admin.query(
           "SELECT c.relname, c.relrowsecurity, EXISTS(SELECT 1 FROM pg_policies p WHERE p.schemaname='woori' AND p.tablename=c.relname AND p.policyname='server_api_access') AS policy FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='woori' AND c.relname IN ('notices','inquiries') ORDER BY c.relname"
@@ -173,9 +173,12 @@ test('isolated PostgreSQL: read-only notices and own member inquiries', async (t
                 [`woori.${table}`]
               )
             ).rows[0];
+          // W06 admin API: notice authoring (INSERT + column UPDATE, never
+          // DELETE) and inquiry answers/status (column UPDATE only). Members still
+          // have no authoring route (asserted over HTTP below).
           assert.deepEqual(await privileges('notices'), {
             read: true,
-            insert: false,
+            insert: true,
             update: false,
             delete: false,
             truncate: false,
@@ -187,17 +190,40 @@ test('isolated PostgreSQL: read-only notices and own member inquiries', async (t
             delete: true,
             truncate: false,
           });
-          await assert.rejects(
-            runtime.query(
-              "INSERT INTO woori.notices(id,title,body,status,\"updatedAt\") VALUES($1,'x','x','PUBLISHED',now())",
-              [randomUUID()]
-            ),
-            (error: { code?: string }) => error.code === '42501'
-          );
-          await assert.rejects(
-            runtime.query("UPDATE woori.inquiries SET status='CLOSED'"),
-            (error: { code?: string }) => error.code === '42501'
-          );
+          const updatable = async (table: string) =>
+            (
+              await runtime.query(
+                "SELECT a.attname AS name FROM pg_attribute a WHERE a.attrelid=$1::regclass AND a.attnum>0 AND NOT a.attisdropped AND has_column_privilege(current_user, $1, a.attname, 'UPDATE') ORDER BY a.attname",
+                [`woori.${table}`]
+              )
+            ).rows.map((row: { name: string }) => row.name);
+          assert.deepEqual(await updatable('notices'), [
+            'body',
+            'publishedAt',
+            'status',
+            'title',
+            'updatedAt',
+          ]);
+          assert.deepEqual(await updatable('inquiries'), [
+            'answer',
+            'answeredAt',
+            'status',
+            'updatedAt',
+          ]);
+          for (const statement of [
+            'DELETE FROM woori.notices',
+            `UPDATE woori.notices SET id='${randomUUID()}'`,
+            'UPDATE woori.notices SET "createdAt"=now()',
+            `UPDATE woori.inquiries SET "userId"='${randomUUID()}'`,
+            "UPDATE woori.inquiries SET body='changed', title='changed'",
+            "UPDATE woori.inquiries SET category='OTHER'",
+            'TRUNCATE woori.notices',
+          ])
+            await assert.rejects(
+              runtime.query(statement),
+              (error: { code?: string }) => error.code === '42501',
+              statement
+            );
         } finally {
           await runtime.end();
         }
@@ -394,7 +420,8 @@ test('isolated PostgreSQL: read-only notices and own member inquiries', async (t
           '/v1/admin/inquiries',
           `/v1/admin/inquiries/${id}`,
         ]) {
-          const result = await writer.agent.get(path).expect(403);
+          // Member sessions are not admin sessions: 401 in the admin realm.
+          const result = await writer.agent.get(path).expect(401);
           assert.equal(result.body.code, 'ADMIN_AUTHENTICATION_REQUIRED');
         }
         for (const op of [
@@ -403,7 +430,7 @@ test('isolated PostgreSQL: read-only notices and own member inquiries', async (t
         ]) {
           const result = await mutate(op)
             .send({ title: '관리자 흉내', answer: '답변' })
-            .expect(403);
+            .expect(401);
           assert.equal(result.body.code, 'ADMIN_AUTHENTICATION_REQUIRED');
         }
         assert.equal(

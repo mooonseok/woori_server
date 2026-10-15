@@ -26,6 +26,6 @@ import { MailService } from './mail.service';
     RecoveryRepository,
     RecoveryService,
   ],
-  exports: [AuthService, AuthRateLimitService],
+  exports: [AuthService, AuthRateLimitService, AccountDeletionRepository],
 })
 export class AuthModule {}

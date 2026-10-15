@@ -138,10 +138,25 @@
     {
       "id": "W06",
       "title": "관리자",
-      "status": "pending",
-      "evidence": [],
-      "implementationRefs": [],
-      "peerEvidence": []
+      "status": "in_progress",
+      "evidence": [
+        "2026-10-15 W06 slice A (admin auth, OpenAPI 0.16.0) and slice B (notices/inquiries/reports/audited photo+comment view, OpenAPI 0.17.0) implemented uncommitted on feature/service-guidance (server + apps/admin). Isolated gates: server unit 102 / integration 148 pass at slice B; client tests 177 pass at slice B.",
+        "Slice A/B verified on an isolated fixture (temporary DB, API 3011, static admin web 3230, private R2 synthetic photos): MFA setup/verify/reauth/logout, member session/origin rejection, report queue, audited photo view (display variant via blob, audit row with reason), reauth prompt after expiry, DELETE_CONTENT photo (same-target auto-resolve, member 404, cleanup job queued), comment view/delete, SUSPEND_USER (old session 401, content kept), inquiry answer visible to member, notice draft/publish/archive/schedule visibility and audit rows.",
+        "Slice C (members/groups/metrics, OpenAPI 0.18.0, migration 20261028000000_admin_member_operations index-only, roster shows suspended members) was in progress when work was paused by the user: typecheck and unit tests (106) pass; integration tests, OpenAPI review, admin web/server contract alignment and browser verification NOT done. Admin web slice C + member-web ACCOUNT_SUSPENDED message done (client tests 195 pass) against spec assumptions.",
+        "Not done: independent review of W06, woori_dev migration (20261026/20261027/20261028) and grant application (needs user approval), admin env setup, records final update. No commit or push of W06."
+      ],
+      "implementationRefs": [
+        "integration/admin-*.test.ts",
+        "prisma/migrations/20261026000000_admin_operations",
+        "prisma/migrations/20261027000000_admin_content_operations",
+        "prisma/migrations/20261028000000_admin_member_operations",
+        "prisma/runtime-grants.sql",
+        "scripts/admin-accounts.mjs",
+        "src/admin/**"
+      ],
+      "peerEvidence": [
+        "W06 slice A/B: client and server aligned with contracts/openapi.json 0.17.0 (reporter.status pending in slice C); slice C contract alignment pending."
+      ]
     },
     {
       "id": "W07",
@@ -163,7 +178,7 @@
   "pendingDecisions": [
     "W04: physical iPhone/Android acceptance and deployment memory testing remain; HEIC decoder adoption deferred after failed installed-decoder PoC.",
     "W05: physical-device/mobile screen-reader validation remains; operator identity, privacy contact, retention periods and legal policy text are undecided and shown as placeholders.",
-    "W06: admin roles, photo-viewing scope, audit retention, notice authoring, inquiry answers, report processing and report/inquiry retention periods.",
+    "W06: audit-log, report and inquiry retention periods undecided; operator identity/contact still placeholders (W05).",
     "W07-W08: review corresponding DESIGN.md decisions before implementation."
   ],
   "durableDecisionsMoved": false,
