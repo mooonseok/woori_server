@@ -32,11 +32,16 @@ export class InvitationsRepository {
           isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
         });
       } catch (error) {
-        if (
-          !(error instanceof Prisma.PrismaClientKnownRequestError) ||
-          error.code !== 'P2034'
-        )
+        if (!(error instanceof Prisma.PrismaClientKnownRequestError))
           throw error;
+        const adapter = error.meta?.driverAdapterError as
+          { cause?: { originalCode?: string } } | undefined;
+        const sqlState = error.meta?.code ?? adapter?.cause?.originalCode;
+        const retryable =
+          error.code === 'P2034' ||
+          (error.code === 'P2010' &&
+            (sqlState === '40001' || sqlState === '40P01'));
+        if (!retryable) throw error;
         if (attempt === 3)
           throw new ConflictException({
             code: 'INVITATION_RETRY',
@@ -51,6 +56,7 @@ export class InvitationsRepository {
     groupId: string,
     userId: string
   ) {
+    await tx.$queryRaw`SELECT id FROM woori.groups WHERE id=${groupId}::uuid FOR UPDATE`;
     const owner = await tx.group.findFirst({
       where: {
         id: groupId,
@@ -162,6 +168,12 @@ export class InvitationsRepository {
   }
   join(lookup: { codeHash?: string; tokenHash?: string }, userId: string) {
     return this.serial(async (tx) => {
+      const initial = await tx.invitation.findFirst({
+        where: lookup,
+        select: { groupId: true },
+      });
+      if (!initial) invalidInvitation();
+      await tx.$queryRaw`SELECT id FROM woori.groups WHERE id=${initial.groupId}::uuid FOR UPDATE`;
       const invitation = await this.findAvailable(tx, lookup);
       const key = { groupId: invitation.groupId, userId };
       const member = await tx.membership.findUnique({

@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "우리 인증·그룹·초대·앨범·사진 API",
-    "version": "0.7.0",
-    "description": "현재 구현된 Nest API 계약. 모든 응답은 Cache-Control: no-store이다. 브라우저 요청은 credentials: include를 사용한다. 운영 세션은 HttpOnly·Secure·SameSite=Lax인 __Host-woori_session 쿠키, 비운영은 woori_session 쿠키이다. 모든 변경 메서드는 허용 목록과 정확히 일치하는 Origin 및 X-Woori-Request: 1을 요구하며 본문은 application/json을 사용한다. 알 수 없는 요청 필드는 400으로 거절한다. API는 서버 프레임워크 전역 prefix 없이 아래 경로를 직접 제공한다. 회원 한정 앨범 목록 조회는 실제 DB에 연결되어 있다. 앨범 생성과 비공개 R2 사진 업로드·조회가 구현되어 있다. 업로드는 허가→R2 PUT→완료 순서이며 완료 시 서버에서 파일을 검증하고 파생본을 생성한다. 사진 콘텐츠는 매 요청 현재 멤버십을 확인하며 private, no-store이다. 웹 푸시 구독·세션 연결·Outbox 발송 및 수신 직전 표시 권한 검사가 구현되어 있다. 네이티브 푸시·관리자 운영 기능은 포함하지 않는다. 일반/위치 댓글과 사용자당 사진별 이모지 반응을 DB에 저장한다. 모든 조회 및 변경은 현재 활성 멤버십, 활성 그룹, 삭제되지 않은 앨범과 READY 사진을 검사한다. 댓글은 작성자만 수정하고 작성자 또는 그룹장만 삭제한다. 이름·이메일 계정 복구, 일회용 비밀번호 재설정과 현재 계정 이름 수정이 구현되어 있다."
+    "version": "0.8.0",
+    "description": "현재 구현된 Nest API 계약. 모든 응답은 Cache-Control: no-store이다. 브라우저 요청은 credentials: include를 사용한다. 운영 세션은 HttpOnly·Secure·SameSite=Lax인 __Host-woori_session 쿠키, 비운영은 woori_session 쿠키이다. 모든 변경 메서드는 허용 목록과 정확히 일치하는 Origin 및 X-Woori-Request: 1을 요구하며 본문은 application/json을 사용한다. 알 수 없는 요청 필드는 400으로 거절한다. API는 서버 프레임워크 전역 prefix 없이 아래 경로를 직접 제공한다. 회원 한정 앨범 목록 조회는 실제 DB에 연결되어 있다. 앨범 생성과 비공개 R2 사진 업로드·조회가 구현되어 있다. 업로드는 허가→R2 PUT→완료 순서이며 완료 시 서버에서 파일을 검증하고 파생본을 생성한다. 사진 콘텐츠는 매 요청 현재 멤버십을 확인하며 private, no-store이다. 웹 푸시 구독·세션 연결·Outbox 발송 및 수신 직전 표시 권한 검사가 구현되어 있다. 네이티브 푸시·관리자 운영 기능은 포함하지 않는다. 일반/위치 댓글과 사용자당 사진별 이모지 반응을 DB에 저장한다. 모든 조회 및 변경은 현재 활성 멤버십, 활성 그룹, 삭제되지 않은 앨범과 READY 사진을 검사한다. 댓글은 작성자만 수정하고 작성자 또는 그룹장만 삭제한다. 이름·이메일 계정 복구, 일회용 비밀번호 재설정과 현재 계정 이름 수정이 구현되어 있다. 그룹 구성원 조회·이름 수정·탈퇴·내보내기·소유권 이전·비동기 그룹 삭제가 구현되어 있다."
   },
   "tags": [
     {
@@ -1384,6 +1384,396 @@
           }
         ],
         "tags": ["groups"]
+      },
+      "patch": {
+        "operationId": "renameGroup",
+        "summary": "그룹 이름 수정",
+        "description": "현재 ACTIVE 그룹장만 수정한다. name은 앞뒤 공백 제거 후 1~100자. 앨범 제목 수정도 계속 그룹장만 허용한다.",
+        "tags": ["groups"],
+        "security": [
+          {
+            "ProductionSession": []
+          },
+          {
+            "DevelopmentSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/WooriRequest"
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "잘못된 UUID·본문·쿼리 또는 알 수 없는 필드.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTHENTICATION_REQUIRED: 활성 사용자 세션 필요.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "GROUP_OWNER_REQUIRED: 그룹장 권한 필요. 변경 요청은 REQUEST_ORIGIN_REJECTED 또는 JSON_REQUIRED도 가능.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "GROUP_NOT_FOUND: 존재하지 않거나 활성 그룹 멤버가 아님.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "GROUP_OWNER_CANNOT_LEAVE, GROUP_MEMBER_UNAVAILABLE, GROUP_NAME_MISMATCH: 현재 상태와 요청이 충돌함.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "TOO_MANY_REQUESTS: 변경 요청은 사용자당 15분 50회 공유 한도.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR: 내부 오류 원문은 공개하지 않음.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "성공.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateGroupRequest"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteGroup",
+        "summary": "그룹 삭제 요청",
+        "description": "현재 그룹장이 정확한 그룹 이름을 입력해야 한다. DELETING 상태와 초대 취소를 원자적으로 저장하며 이후 콘텐츠·알림·푸시 표시 접근을 차단한다. 워커가 사진/앨범 각 100개씩 tombstone과 기존 R2 cleanup job을 만들고 재시도한다. 202는 요청 접수이며 파일 삭제 완료를 뜻하지 않는다. 예약 PUT 만료/처리 유예가 끝나고 정리된 뒤 DELETED가 되며 늦은 처리 결과는 다시 정리된다. 같은 그룹장의 동일 이름 재요청은 202. 메타데이터 hard delete는 하지 않는다.",
+        "tags": ["groups"],
+        "security": [
+          {
+            "ProductionSession": []
+          },
+          {
+            "DevelopmentSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/WooriRequest"
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "잘못된 UUID·본문·쿼리 또는 알 수 없는 필드.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTHENTICATION_REQUIRED: 활성 사용자 세션 필요.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "GROUP_OWNER_REQUIRED: 그룹장 권한 필요. 변경 요청은 REQUEST_ORIGIN_REJECTED 또는 JSON_REQUIRED도 가능.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "GROUP_NOT_FOUND: 존재하지 않거나 활성 그룹 멤버가 아님.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "GROUP_OWNER_CANNOT_LEAVE, GROUP_MEMBER_UNAVAILABLE, GROUP_NAME_MISMATCH: 현재 상태와 요청이 충돌함.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "TOO_MANY_REQUESTS: 변경 요청은 사용자당 15분 50회 공유 한도.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR: 내부 오류 원문은 공개하지 않음.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "성공.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateGroupRequest"
+              }
+            }
+          }
+        }
       }
     },
     "/v1/groups/{groupId}/invitations": {
@@ -5822,6 +6212,714 @@
         },
         "tags": ["authentication"]
       }
+    },
+    "/v1/groups/{groupId}/members": {
+      "get": {
+        "operationId": "listGroupMembers",
+        "summary": "활성 그룹 구성원 조회",
+        "description": "현재 활성 멤버에게 이름·역할·가입 시각만 반환한다. 이메일·로그인 ID는 제공하지 않는다. userId 오름차순 keyset 페이지이며 after는 마지막 userId로, 해당 회원이 떠난 뒤에도 다음 페이지를 조회할 수 있다.",
+        "tags": ["groups"],
+        "security": [
+          {
+            "ProductionSession": []
+          },
+          {
+            "DevelopmentSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 30
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "잘못된 UUID·본문·쿼리 또는 알 수 없는 필드.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTHENTICATION_REQUIRED: 활성 사용자 세션 필요.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "GROUP_NOT_FOUND: 존재하지 않거나 활성 그룹 멤버가 아님.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR: 내부 오류 원문은 공개하지 않음.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "성공.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupMembersResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/groups/{groupId}/leave": {
+      "post": {
+        "operationId": "leaveGroup",
+        "summary": "그룹 나가기",
+        "description": "일반 회원은 LEFT로 전환되고 접근을 잃는다. 기존 공유 사진·댓글·반응은 남는다. 유효한 새/기존 초대로 재가입 가능하다. 그룹장은 이전 또는 그룹 삭제가 필요하며 409를 받는다.",
+        "tags": ["groups"],
+        "security": [
+          {
+            "ProductionSession": []
+          },
+          {
+            "DevelopmentSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/WooriRequest"
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "잘못된 UUID·본문·쿼리 또는 알 수 없는 필드.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTHENTICATION_REQUIRED: 활성 사용자 세션 필요.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "GROUP_OWNER_REQUIRED: 그룹장 권한 필요. 변경 요청은 REQUEST_ORIGIN_REJECTED 또는 JSON_REQUIRED도 가능.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "GROUP_NOT_FOUND: 존재하지 않거나 활성 그룹 멤버가 아님.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "GROUP_OWNER_CANNOT_LEAVE, GROUP_MEMBER_UNAVAILABLE, GROUP_NAME_MISMATCH: 현재 상태와 요청이 충돌함.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "TOO_MANY_REQUESTS: 변경 요청은 사용자당 15분 50회 공유 한도.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR: 내부 오류 원문은 공개하지 않음.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "성공.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/groups/{groupId}/members/{userId}": {
+      "delete": {
+        "operationId": "removeGroupMember",
+        "summary": "구성원 내보내기",
+        "description": "그룹장만 같은 그룹의 일반 회원을 REMOVED로 바꿀 수 있다. 기존 콘텐츠를 보존하고 접근 및 초대를 통한 재참여를 차단한다. 이미 REMOVED인 대상 재요청은 204. 자기 자신/그룹장/다른 그룹 회원은 409.",
+        "tags": ["groups"],
+        "security": [
+          {
+            "ProductionSession": []
+          },
+          {
+            "DevelopmentSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/WooriRequest"
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "잘못된 UUID·본문·쿼리 또는 알 수 없는 필드.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTHENTICATION_REQUIRED: 활성 사용자 세션 필요.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "GROUP_OWNER_REQUIRED: 그룹장 권한 필요. 변경 요청은 REQUEST_ORIGIN_REJECTED 또는 JSON_REQUIRED도 가능.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "GROUP_NOT_FOUND: 존재하지 않거나 활성 그룹 멤버가 아님.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "GROUP_OWNER_CANNOT_LEAVE, GROUP_MEMBER_UNAVAILABLE, GROUP_NAME_MISMATCH: 현재 상태와 요청이 충돌함.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "TOO_MANY_REQUESTS: 변경 요청은 사용자당 15분 50회 공유 한도.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR: 내부 오류 원문은 공개하지 않음.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "성공.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/groups/{groupId}/ownership": {
+      "post": {
+        "operationId": "transferGroupOwnership",
+        "summary": "그룹장 이전",
+        "description": "같은 그룹 ACTIVE 일반 회원에게만 이전한다. group.ownerId와 이전/신규 그룹장 역할을 같은 트랜잭션으로 갱신하고 모든 기존 초대를 취소한다. 응답은 이전 그룹장의 MEMBER 역할 기준 요약. 동시 이전 중 하나만 성공한다.",
+        "tags": ["groups"],
+        "security": [
+          {
+            "ProductionSession": []
+          },
+          {
+            "DevelopmentSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/WooriRequest"
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "잘못된 UUID·본문·쿼리 또는 알 수 없는 필드.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTHENTICATION_REQUIRED: 활성 사용자 세션 필요.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "GROUP_OWNER_REQUIRED: 그룹장 권한 필요. 변경 요청은 REQUEST_ORIGIN_REJECTED 또는 JSON_REQUIRED도 가능.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "GROUP_NOT_FOUND: 존재하지 않거나 활성 그룹 멤버가 아님.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "GROUP_OWNER_CANNOT_LEAVE, GROUP_MEMBER_UNAVAILABLE, GROUP_NAME_MISMATCH: 현재 상태와 요청이 충돌함.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "TOO_MANY_REQUESTS: 변경 요청은 사용자당 15분 50회 공유 한도.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR: 내부 오류 원문은 공개하지 않음.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "성공.",
+            "headers": {
+              "Cache-Control": {
+                "description": "모든 응답은 저장을 금지한다.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferGroupRequest"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -7243,6 +8341,55 @@
             "minLength": 1,
             "maxLength": 80,
             "description": "앞뒤 공백 제거. 복구 조회에 이 이름 사용"
+          }
+        }
+      },
+      "GroupMember": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["userId", "displayName", "role", "joinedAt"],
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": ["OWNER", "MEMBER"]
+          },
+          "joinedAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          }
+        }
+      },
+      "GroupMembersResponse": {
+        "type": "object",
+        "required": ["members", "nextCursor"],
+        "properties": {
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GroupMember"
+            }
+          },
+          "nextCursor": {
+            "type": ["string", "null"],
+            "format": "uuid"
+          }
+        }
+      },
+      "TransferGroupRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["userId"],
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       }

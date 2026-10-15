@@ -25,10 +25,22 @@
     {
       "id": "W02",
       "title": "그룹 수명 관리",
-      "status": "pending",
-      "evidence": [],
-      "implementationRefs": [],
-      "peerEvidence": []
+      "status": "done",
+      "evidence": [
+        "2026-10-15: confirmed album-title edits remain owner-only; leave/remove retain shared content; group deletion immediately hides content and queues R2 cleanup.",
+        "Server policy:quality passed: 18 policy, 52 unit, 51 isolated PostgreSQL integration tests. Client isolated-copy policy:quality passed: 16 policy, 66 functional tests, lint/typecheck/boundaries/format and web/admin production builds.",
+        "Chrome owner/member UI: rename persisted, member has no owner controls, exact-name deletion guard, actual leave removes group; removed member returns to active tab and cached photo viewer closes. Ownership transfer reflected MEMBER role and removed invitation controls.",
+        "Actual private R2 synthetic PNG: upload/owner read succeeded; leave/remove denied member content while owner retained photo/comments. Group delete returned 202, content immediately 404; worker completed, group DELETED, usedBytes 0, variant prefix empty and staging absent.",
+        "Only isolated local test DB used; synthetic fixture upload expiry advanced for cleanup test, normal expiry grace separately covered by integration tests. Existing local/production DB and .env unchanged. No schema migration or grants required."
+      ],
+      "implementationRefs": [
+        "feature/group-management; implementation recorded in this W02 commit",
+        "project.json",
+        "src/domain/groups/group-management.repository.ts"
+      ],
+      "peerEvidence": [
+        "Client/server aligned to contracts/openapi.json 0.8.0; owner/member/outsider permissions, transfer races, delete/upload/join races and R2 cleanup verified."
+      ]
     },
     {
       "id": "W03",
@@ -80,7 +92,7 @@
     }
   ],
   "pendingDecisions": [
-    "W02-W08: review corresponding DESIGN.md decisions before implementation."
+    "W03-W08: review corresponding DESIGN.md decisions before implementation."
   ],
   "durableDecisionsMoved": false,
   "permanentRefs": []

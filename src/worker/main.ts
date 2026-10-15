@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { WorkerModule } from './worker.module';
 import { startupFailure } from '../common/configurations/startup-diagnostics';
 import { MediaCleanupService } from './media-cleanup/media-cleanup.service';
+import { GroupCleanupService } from './group-cleanup/group-cleanup.service';
 async function main() {
   const app = await NestFactory.createApplicationContext(WorkerModule, {
     logger: false,
@@ -23,13 +24,15 @@ async function main() {
   }
   const cleanup = app.get(MediaCleanupService);
   const push = app.get(PushDispatchService);
+  const groups = app.get(GroupCleanupService);
   const runPass = async () => {
     const results = await Promise.allSettled([
       cleanup.runBatch(),
       push.runBatch(),
+      groups.runBatch(),
     ]);
     for (const [index, result] of results.entries()) {
-      const job = index === 0 ? 'media-cleanup' : 'web-push';
+      const job = ['media-cleanup', 'web-push', 'group-cleanup'][index];
       if (result.status === 'fulfilled') {
         if (
           Object.values(result.value).some(
