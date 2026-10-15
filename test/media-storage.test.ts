@@ -7,6 +7,7 @@ import {
   MediaStorageService,
   collectBounded,
   MAX_UPLOAD_BYTES,
+  MAX_IMAGE_PIXELS,
   MediaStorageOptions,
 } from '../src/common/media/media-storage.service';
 
@@ -296,4 +297,95 @@ test('invalid optional EXIF date falls back without rejecting a valid upload or 
     null
   );
   assert.deepEqual(storage.written.get(variants[0].objectKey), original);
+});
+
+test('48-megapixel phone JPEG is accepted while preserving original bytes', async () => {
+  const storage = new MemoryStorage();
+  storage.input = await sharp({
+    create: { width: 8000, height: 6000, channels: 3, background: '#386aa5' },
+  })
+    .jpeg({ quality: 60 })
+    .toBuffer();
+  const original = Buffer.from(storage.input);
+  const variants = await storage.process(
+    'staging/phone48',
+    'image/jpeg',
+    original.length,
+    'photos/phone48/attempt'
+  );
+  assert.equal(variants[0].width, 8000);
+  assert.equal(variants[0].height, 6000);
+  assert.deepEqual(storage.written.get(variants[0].objectKey), original);
+  assert.equal(variants[1].width, 2560);
+  assert.equal(variants[1].height, 1920);
+  assert.equal(variants[2].width, 480);
+  assert.equal(variants[2].height, 360);
+});
+
+test('JPEG dimensions immediately above 60 megapixels fail before publishing', async () => {
+  const storage = new MemoryStorage();
+  // A valid JPEG SOF header needs no checksum. Changing dimensions avoids
+  // allocating a >60MP pixel fixture and exercises sharp's metadata limit.
+  storage.input = Buffer.from(await photo());
+  let offset = 2;
+  let patched = false;
+  while (offset + 4 < storage.input.length) {
+    assert.equal(storage.input[offset], 0xff);
+    const marker = storage.input[offset + 1];
+    if (marker === 0xc0 || marker === 0xc2) {
+      storage.input.writeUInt16BE(6001, offset + 5);
+      storage.input.writeUInt16BE(10000, offset + 7);
+      patched = true;
+      break;
+    }
+    offset += 2 + storage.input.readUInt16BE(offset + 2);
+  }
+  assert.equal(patched, true);
+  const header = await sharp(storage.input, {
+    limitInputPixels: false,
+  }).metadata();
+  assert.equal(header.width! * header.height!, 60_010_000);
+  assert.ok(header.width! * header.height! > MAX_IMAGE_PIXELS);
+  await assert.rejects(
+    storage.process(
+      'staging/over60',
+      'image/jpeg',
+      storage.input.length,
+      'photos/over60/attempt'
+    ),
+    hasCode('INVALID_PHOTO_FILE')
+  );
+  assert.equal(storage.written.size, 0);
+});
+
+test('third concurrent processor fails fast and failed work releases both slots', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  class PausedStorage extends MemoryStorage {
+    downloads = 0;
+    protected override async download(key: string, max: number) {
+      this.downloads++;
+      await gate;
+      return super.download(key, max);
+    }
+  }
+  const storage = new PausedStorage();
+  storage.input = Buffer.from('invalid jpeg');
+  const run = (id: string) =>
+    storage.process(
+      `staging/${id}`,
+      'image/jpeg',
+      storage.input.length,
+      `photos/${id}/attempt`
+    );
+  const first = assert.rejects(run('first'), hasCode('INVALID_PHOTO_FILE'));
+  const second = assert.rejects(run('second'), hasCode('INVALID_PHOTO_FILE'));
+  await assert.rejects(run('third'), hasCode('MEDIA_PROCESSING_BUSY'));
+  assert.equal(storage.downloads, 2);
+  release();
+  await Promise.all([first, second]);
+  storage.input = await photo();
+  assert.equal((await run('retry')).length, 3);
 });

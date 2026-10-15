@@ -21,7 +21,12 @@ import { exifCapturedAt } from './photo-capture-date';
 
 export const MAX_UPLOAD_BYTES = 30 * 1024 * 1024;
 export const MAX_TOTAL_VARIANT_BYTES = 90 * 1024 * 1024;
-export const MAX_IMAGE_PIXELS = 40_000_000;
+export const MAX_IMAGE_PIXELS = 60_000_000;
+// Bound retained native cache and per-image threads; this is not an RSS limit.
+// Each process has its own cache and processing slots. Deployment memory
+// budgets must account for both API and worker processes.
+sharp.cache({ memory: 32, files: 0, items: 32 });
+sharp.concurrency(1);
 export const MEDIA_STORAGE_OPTIONS = Symbol('MEDIA_STORAGE_OPTIONS');
 export interface MediaStorageOptions {
   accountId?: string;

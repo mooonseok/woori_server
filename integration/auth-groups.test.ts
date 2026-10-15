@@ -1038,13 +1038,13 @@ test('real PostgreSQL: authentication, private groups and single-use invitation 
           owner.agent.post(`${album}/photos/${expired.photoId}/complete`)
         ).expect(410);
         const tickets = await Promise.all(
-          Array.from({ length: 6 }, () =>
+          Array.from({ length: 31 }, () =>
             mutation(owner.agent.post(`${album}/uploads`)).send(payload)
           )
         );
         assert.equal(
           tickets.filter((result) => result.status === 201).length,
-          5
+          30
         );
         assert.equal(
           tickets.filter((result) => result.status === 409).length,
@@ -1397,7 +1397,7 @@ test('real PostgreSQL: authentication, private groups and single-use invitation 
               }
             );
             await Promise.all(
-              Array.from({ length: 6 }, () =>
+              Array.from({ length: 31 }, () =>
                 mutation(owner.agent.put(reactions))
                   .send({ emoji: '❤️' })
                   .expect(200)
