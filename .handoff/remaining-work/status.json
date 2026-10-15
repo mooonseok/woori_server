@@ -86,10 +86,31 @@
     {
       "id": "W05",
       "title": "계정 수명·서비스 안내",
-      "status": "pending",
-      "evidence": [],
-      "implementationRefs": [],
-      "peerEvidence": []
+      "status": "in_progress",
+      "evidence": [
+        "2026-10-15: user authorized account settings, current-password reauthentication, password/email changes, all-session/push revocation, real-email and two-account browser validation. Account deletion/service guidance remain outside this implementation slice.",
+        "Server policy:quality passed: 18 policy, 73 unit, 75 isolated PostgreSQL integration tests plus Prisma/typecheck/format/build. Client isolated-copy policy:quality passed: 16 policy, 82 functional tests, typecheck/lint/boundaries/format and web/admin builds; latest credential-race fix reran 71 web tests/typecheck/lint/format.",
+        "Independent security review: user/session locking, account-bound token confirmation and atomic revocation checked. Fixed background-401 success handling and delayed credential-response cookie removal racing with new login.",
+        "One existing push lease test transiently returned null during quality run; baseline test passed 11 repeats and final full quality passed without changing/skipping the assertion. Cause remains undetermined.",
+        "Two-account Chrome settings navigation checked; real browser push registration, user credential changes and real mail confirmation still in progress. ",
+        "With explicit user approval, 20261021000000_account_settings applied to 127.0.0.1:55439/woori_dev; verified targetEmail is nullable VARCHAR(254). No new grants or existing-data deletion; remote DB untouched. Real Chrome push registration confirmed before credential-change handoff.",
+        "User completed password change and new-password login in Chrome. Isolated DB/API independently verified three old sessions revoked, two push bindings revoked including real Chrome subscription, old session cookies and old password returning 401, one new active session, and unaffected member session/push. Browser displayed notifications off; explicitly reconnected for email-change validation.",
+        "Actual email-change request rejected by Resend 403: testing-domain recipient restriction. Read-only dashboard confirmed resend.dev sender and no registered domains. Existing account email/session/push preserved. New-address mail receipt/confirmation remains blocked until user configures a verified sender domain; no provider restriction bypass or false delivery claim.",
+        "User reported auth.woori.stream Verified and updated private MAIL_FROM. Restarted only the owned fixture API on 3001 with guarded existing isolated DB and verified configured sender domain; existing browser session and push retained. Email-change retry handed to user for credential submission/confirmation.",
+        "Actual Resend mail received in Naver and user confirmed email change in Chrome. DB independently verified new email verified, all four prior owner sessions revoked, all three owner push bindings revoked, zero outstanding email tokens, and member session/push unaffected. The exact session and real Chrome binding active immediately before email change were revoked with bindingVersion advanced.",
+        "Resend dashboard: new-address confirmation and old-address change notice both delivered. Chrome success page displayed email-changed/login/reconnect guidance; other open account-settings tab became unauthenticated. Member re-login and own unchanged settings verified afterward. No extra owner login after email change was performed.",
+        "390px viewport request remained 1512px in actual DOM even in a new tab; mobile layout validation is not claimed. Temporary viewport override reset.",
+        "Browser logged out; guarded isolated fixture DB and private fixture mail/session state removed, no R2 objects created. Normal local API restored on 3001 using updated private sender configuration. Existing local accounts and production DB preserved. No commit or push performed. Account deletion and service guidance remain pending, so W05 stays in_progress.",
+        "User requested repository-local commits in the established portfolio format; implementation and verification records included without push. W05 remains in_progress for mobile validation and remaining account lifecycle/service guidance."
+      ],
+      "implementationRefs": [
+        "feature/account-settings; implementation and verification recorded in this commit; mobile layout validation pending",
+        "project.json",
+        "src/domain/auth/account-settings.repository.ts"
+      ],
+      "peerEvidence": [
+        "Client/server aligned with contracts/openapi.json 0.11.0."
+      ]
     },
     {
       "id": "W06",

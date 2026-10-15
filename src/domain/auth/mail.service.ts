@@ -30,6 +30,22 @@ export class MailService {
       2000
     );
   }
+  async sendEmailChange(email: string, token: string) {
+    await this.send(
+      email,
+      '[우리] 새 이메일 주소를 확인해 주세요',
+      `아래 링크를 열고 변경을 요청한 계정으로 로그인해 이메일 변경을 확인해 주세요. 링크는 30분 동안 한 번만 사용할 수 있어요. 새 링크를 요청하면 이전 링크는 사용할 수 없어요. 확인하면 모든 기기에서 로그아웃됩니다.\n\n${this.link('/change-email', token)}\n\n요청한 적이 없다면 이 메일을 무시해 주세요.`,
+      2000
+    );
+  }
+  async sendEmailChangedNotice(email: string) {
+    await this.send(
+      email,
+      '[우리] 계정 이메일이 변경되었어요',
+      '우리 계정의 이메일 주소가 변경되었어요. 기존 기기의 로그인과 알림 연결이 해제되었습니다. 직접 변경하지 않았다면 서비스 문의로 알려 주세요. 보안을 위해 이 메일에는 새 이메일 주소를 표시하지 않습니다.',
+      2000
+    );
+  }
   private link(path: string, token: string) {
     const origin = process.env.WEB_ORIGIN;
     if (!origin)

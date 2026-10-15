@@ -402,6 +402,7 @@ model OutboxEvent {
 }
 
 model EmailToken {
+  targetEmail String? @db.VarChar(254)
   id         String    @id @default(uuid()) @db.Uuid
   userId     String    @db.Uuid
   tokenHash  String    @unique @db.VarChar(128)
