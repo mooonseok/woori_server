@@ -41,7 +41,8 @@ export function validateQuietPreferences(p: {
 // Shared by inbox list, unread count, /target, read, read-all and web push
 // eligibility/display: activity by an actor the recipient blocked is never shown,
 // and a target photo whose uploader the recipient blocked is invisible (the same
-// predicate as MediaPhoto reads).
+// predicate as MediaPhoto reads). The recipient must be ACTIVE; an actor follows
+// the group roster (ACTIVE or SUSPENDED stays visible, withdrawn is hidden).
 export function visible(userId: string) {
   return Prisma.sql`SELECT n.id,n.kind,n."groupId",g.name AS "groupName",p."albumId",a.title AS "albumTitle",p.id AS "photoId",p."uploaderId",c.id AS "commentId",n."createdAt",n."readThroughSequence",act.sequence AS "latestSequence",u.id AS "actorId",u."displayName" AS "actorName"
     FROM woori.notifications n
@@ -49,7 +50,7 @@ export function visible(userId: string) {
     JOIN woori.memberships m ON m."groupId"=g.id AND m."userId"=${userId}::uuid AND m.status='ACTIVE'
     JOIN woori.users recipient ON recipient.id=m."userId" AND recipient.status='ACTIVE'
     JOIN woori.notification_activities act ON act."notificationId"=n.id AND act.sequence=1
-    JOIN woori.users u ON u.id=act."actorId" AND u.status='ACTIVE'
+    JOIN woori.users u ON u.id=act."actorId" AND u.status IN ('ACTIVE','SUSPENDED')
     LEFT JOIN woori.comments c ON n.kind IN ('COMMENT','PIN') AND c.id=n."targetId" AND c."groupId"=g.id AND c."deletedAt" IS NULL
     JOIN woori.photos p ON p.id=CASE WHEN n.kind IN ('COMMENT','PIN') THEN c."photoId" ELSE n."targetId" END AND p."groupId"=g.id AND p.status='READY' AND p."deletedAt" IS NULL
     JOIN woori.albums a ON a.id=p."albumId" AND a."groupId"=g.id AND a."deletedAt" IS NULL

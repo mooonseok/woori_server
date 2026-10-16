@@ -21,17 +21,20 @@ import {
   ADMIN_REAUTH,
 } from '../decorators/admin-access.decorator';
 import type { AdminRequest } from '../dto/admin-session.dto';
-const SAFE_METHODS = ['GET', 'HEAD', 'OPTIONS'];
-// Admin requests must come from the admin web only. The member web origin is
-// CORS-allowed for member routes but is rejected here for every method, and
-// mutations also need the exact origin and the custom CSRF header.
+const SAFE_METHODS = ['GET', 'HEAD'];
+// Admin requests must come from the admin web only. Every admin request
+// (including audited GETs) carries X-Woori-Request: 1, which a cross-site page
+// cannot add without a CORS preflight that only ADMIN_WEB_ORIGIN passes. A
+// present Origin must be the admin web origin (the member web origin is
+// rejected for every method) and mutations must send it. OPTIONS preflights
+// are answered by the CORS layer before any guard.
 export function checkAdminOrigin(request: Request, config: AdminConfig) {
   const origin = request.get('Origin');
   const mutation = !SAFE_METHODS.includes(request.method);
   if (
+    request.get('X-Woori-Request') !== '1' ||
     (origin !== undefined && origin !== config.webOrigin) ||
-    (mutation &&
-      (origin !== config.webOrigin || request.get('X-Woori-Request') !== '1'))
+    (mutation && origin !== config.webOrigin)
   )
     throw new ForbiddenException({
       code: 'REQUEST_ORIGIN_REJECTED',

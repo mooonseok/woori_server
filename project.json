@@ -1,7 +1,7 @@
 {
   "name": "woori_server",
   "product": "우리",
-  "status": "service-guidance-implemented-mobile-validation-pending",
+  "status": "admin-operations-implemented-acceptance-pending",
   "plans": "/Users/parkmoonseok/.Codex/projects/woori_server/plans",
   "sharedPlan": "/Users/parkmoonseok/.Codex/projects/woori/plans/00-product-plan.md",
   "implemented": [
@@ -49,18 +49,20 @@
   "notImplemented": [
     "production Supabase/Railway/R2 provisioning and deployment",
     "mail outbox/retries",
-    "native refresh tokens, admin authentication/MFA and operations",
+    "native refresh tokens",
     "production backup and restore validation",
     "native FCM/APNs subscriptions and dispatch, upload/reaction push bundling",
     "production Web Push setup and iPhone/Android physical-device receipt verification",
     "automatic memory push notifications",
     "global bucket orphan inventory and automatic orphan deletion",
     "HEIC pixel decoding and physical-device photo workflow validation",
-    "admin notice authoring, inquiry answers and report processing (W06)",
     "operator identity, privacy contact, retention periods and finalized privacy policy text (placeholders shown)",
     "album cover selection and album date range",
     "server-side album search/sort and album pagination beyond 50; taken-date sort is demo-only",
-    "group join approval and join notifications (enum/preference only)"
+    "group join approval and join notifications (enum/preference only)",
+    "admin group mutation and ownership transfer (suspended group owner limitation)",
+    "mail delivery metrics (W07 mail outbox)",
+    "audit-log, report and inquiry retention periods (undecided)"
   ],
   "deployment": {
     "api": "Railway paid; Serverless off",
@@ -82,7 +84,7 @@
     "authorization": "RLS allows server runtime role across granted rows; per-user group isolation is enforced in API membership queries",
     "runtimeGrants": "prisma/runtime-grants.sql",
     "pendingMigration": null,
-    "latestLocalMigration": "20261025000000_notification_erasure_indexes (W05 migrations 20261022-20261025 applied to woori_dev with explicit user approval; remote not applied)"
+    "latestLocalMigration": "20261028000000_admin_member_operations (W06 migrations 20261026-20261028 and runtime grants applied to woori_dev with explicit user approval on 2026-10-16 after a pg_dump backup; remote not applied)"
   },
   "runtimeConfiguration": {
     "PORT": "default 3001",
@@ -105,7 +107,9 @@
     "WEB_PUSH_VAPID_SUBJECT": "mailto: real operator contact or HTTPS contact URL",
     "PUSH_ENCRYPTION_KEY": "base64 32-byte AES-GCM key shared by API/worker; back up privately; changing invalidates existing ciphertext",
     "pushKeySetup": "pnpm push:keys mailto:operator@example.com creates NEW gitignored .env.web-push.local mode0600; copy values privately to API/worker environment",
-    "pushDelivery": "worker polls each10s; fanout up to20 and deliveries up to20 eachpass; notification24h expiry, provider TTL300s, five networkattempts, quietretry60s; provider acceptance does not prove device receipt"
+    "pushDelivery": "worker polls each10s; fanout up to20 and deliveries up to20 eachpass; notification24h expiry, provider TTL300s, five networkattempts, quietretry60s; provider acceptance does not prove device receipt",
+    "ADMIN_WEB_ORIGIN": "exact admin web origin (local http://localhost:3002); must also be listed in CORS_ALLOWED_ORIGINS; member routes reject it unless equal to WEB_ORIGIN; empty → /v1/admin answers 503 ADMIN_NOT_CONFIGURED",
+    "ADMIN_TOTP_ENCRYPTION_KEY": "base64 32-byte AES-256-GCM key for admin TOTP secrets; create once with pnpm admin:keys (.env.admin.local, never printed); changing it requires admin:reset-mfa"
   },
   "localSetupPlan": "/Users/parkmoonseok/.Codex/projects/woori/plans/05-local-auth-setup.md",
   "groupManagement": {
@@ -175,5 +179,16 @@
     "verification": "Server 18 policy/87 unit/128 isolated integration; client 16 policy/121 functional, boundaries, builds. Isolated fixture DB with actual private R2 synthetic photos and owner/member/third/outsider browser flows; iOS Simulator Mobile Safari layout (not a physical device). Two independent reviews with fixes applied.",
     "remaining": "Physical iPhone/Android and screen-reader validation, large-account erasure timing, and W06 admin processing remain.",
     "database": "Additive migrations 20261022000000_service_support, 20261023000000_content_reports, 20261024000000_user_blocks and index-only 20261025000000_notification_erasure_indexes. Rollback: drop the four new tables/enums and two indexes and their migration records; completed account deletions are not reversible."
+  },
+  "adminOperations": {
+    "scope": "W06 admin on feature/admin-operations (develop + uncommitted review fixes), OpenAPI 0.19.0.",
+    "authentication": "Separate admin_accounts/admin_sessions/admin_audit_logs and cookie woori_admin_session (__Host- in production, SameSite=Strict); TOTP MFA; 8 h absolute / 30 min idle / 10 min pre-MFA; 10 min re-auth for views and sensitive actions; lockout and rate limits; first admin only via pnpm admin:create (owner connection, password via TTY or stdin).",
+    "requests": "Every /v1/admin request needs X-Woori-Request: 1 and, when present, Origin == ADMIN_WEB_ORIGIN; member sessions never authorize admin routes and the admin origin is rejected on member routes.",
+    "content": "Notices draft/publish/schedule(≤90 days)/archive; inquiry answers/status; reports review/dismiss/resolve (DELETE_CONTENT or SUSPEND_USER, same-target auto-resolve, 409 when closed); photo (display variant only, no-store) and comment views need reason + re-auth and are audited, 120/hour per admin.",
+    "members": "List/search with masked email, detail counts, rename, suspend/unsuspend/delete (re-auth; delete reuses member deletion core; owned groups → 409). Suspension blocks own access only; suspended members stay in rosters, report/block targets and notification actors.",
+    "groups": "Read-only group/album/photo metadata (album photo list audited); metrics with mail: null until W07.",
+    "audit": "Append-only (runtime SELECT/INSERT); metadata whitelist of enums/UUIDs; no-op mutations returning personal data write *_VIEWED.",
+    "grants": "admin_accounts SELECT + 6 login-state columns; admin_sessions SELECT/INSERT + 7-column UPDATE; admin_audit_logs SELECT/INSERT; notices INSERT + column UPDATE; inquiries/content_reports column UPDATE.",
+    "remaining": "User must set ADMIN_WEB_ORIGIN/ADMIN_TOTP_ENCRYPTION_KEY and create the first admin; retention periods undecided; suspended group owner limitation."
   }
 }

@@ -93,10 +93,16 @@ export class ReportsRepository {
     >`SELECT id FROM woori.groups WHERE id=${groupId}::uuid AND status='ACTIVE' FOR SHARE`;
     if (!groups.length) reportTargetNotFound();
     const ids = [...new Set([userId, input.targetId])].sort();
-    const members = await tx.$queryRaw<{ userId: string }[]>(
-      Prisma.sql`SELECT m."userId" FROM woori.memberships m JOIN woori.users u ON u.id=m."userId" WHERE m."groupId"=${groupId}::uuid AND m."userId" IN (${Prisma.join(ids.map((id) => Prisma.sql`${id}::uuid`))}) AND m.status='ACTIVE' AND u.status='ACTIVE' ORDER BY m."userId" FOR SHARE OF m,u`
+    // The reporter must be an ACTIVE account; the reported member follows the
+    // group roster (ACTIVE or SUSPENDED, never shown as suspended).
+    const members = await tx.$queryRaw<{ userId: string; status: string }[]>(
+      Prisma.sql`SELECT m."userId",u.status::text AS status FROM woori.memberships m JOIN woori.users u ON u.id=m."userId" WHERE m."groupId"=${groupId}::uuid AND m."userId" IN (${Prisma.join(ids.map((id) => Prisma.sql`${id}::uuid`))}) AND m.status='ACTIVE' AND u.status IN ('ACTIVE','SUSPENDED') ORDER BY m."userId" FOR SHARE OF m,u`
     );
-    if (members.length !== ids.length) reportTargetNotFound();
+    if (
+      members.length !== ids.length ||
+      members.find((row) => row.userId === userId)?.status !== 'ACTIVE'
+    )
+      reportTargetNotFound();
     return { groupId, targetUserId: input.targetId };
   }
   create(userId: string, input: ReportInput) {

@@ -24,12 +24,16 @@ const errors = async (cls: new () => object, plain: object) =>
     })
   ).length;
 
-test('email masking keeps two local characters and hides deleted accounts', () => {
+test('email masking shows min(2, length - 1) local characters and hides deleted accounts', () => {
   assert.equal(
     maskEmail('family.one@example.test', 'ACTIVE'),
     'fa***@example.test'
   );
-  assert.equal(maskEmail('a@x.io', 'SUSPENDED'), 'a***@x.io');
+  assert.equal(maskEmail('a@x', 'ACTIVE'), '***@x');
+  assert.equal(maskEmail('ab@x', 'ACTIVE'), 'a***@x');
+  assert.equal(maskEmail('abc@x', 'SUSPENDED'), 'ab***@x');
+  assert.equal(maskEmail('가@example.test', 'ACTIVE'), '***@example.test');
+  assert.equal(maskEmail('가나@example.test', 'ACTIVE'), '가***@example.test');
   assert.equal(
     maskEmail('가나다@example.test', 'ACTIVE'),
     '가나***@example.test'

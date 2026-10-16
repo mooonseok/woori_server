@@ -137,62 +137,75 @@ export class AdminGroupsRepository {
     });
   }
   // Photo metadata only (no EXIF/location, no bytes): image bytes are served
-  // exclusively by the audited POST /v1/admin/photos/{photoId}/view.
-  async albumPhotos(
+  // exclusively by the audited POST /v1/admin/photos/{photoId}/view. Each page
+  // of a member album is still personal metadata, so every page is audited.
+  albumPhotos(
+    adminId: string,
     groupId: string,
     albumId: string,
     limit: number,
     cursor?: string
   ) {
-    const client = this.prisma.client;
-    if (
-      !(await client.album.findFirst({
-        where: { id: albumId, groupId },
-        select: { id: true },
-      }))
-    )
-      adminNotFound('ADMIN_ALBUM_NOT_FOUND', '앨범을 찾을 수 없어요.');
-    if (
-      cursor &&
-      !(await client.photo.findFirst({
-        where: { id: cursor, albumId, groupId },
-        select: { id: true },
-      }))
-    )
-      adminCursorInvalid('ADMIN_PHOTO_CURSOR_INVALID');
-    const after = cursor
-      ? Prisma.sql`AND (p."createdAt",p.id)<(SELECT "createdAt",id FROM woori.photos WHERE id=${cursor}::uuid)`
-      : Prisma.empty;
-    const rows = await client.$queryRaw<
-      {
-        id: string;
-        status: string;
-        uploaderId: string;
-        uploaderDisplayName: string;
-        width: number | null;
-        height: number | null;
-        bytes: bigint;
-        capturedAt: Date | null;
-        manualCapturedDate: Date | null;
-        createdAt: Date;
-      }[]
-    >(
-      Prisma.sql`SELECT p.id,p.status::text AS status,u.id AS "uploaderId",u."displayName" AS "uploaderDisplayName",p.width,p.height,p.bytes,p."capturedAt",p."manualCapturedDate",p."createdAt" FROM woori.photos p JOIN woori.users u ON u.id=p."uploaderId" WHERE p."albumId"=${albumId}::uuid AND p."groupId"=${groupId}::uuid ${after} ORDER BY p."createdAt" DESC,p.id DESC LIMIT ${limit + 1}`
-    );
-    const more = rows.length > limit;
-    if (more) rows.pop();
-    return {
-      items: rows.map((row) => ({
-        id: row.id,
-        status: row.status,
-        uploader: { id: row.uploaderId, displayName: row.uploaderDisplayName },
-        width: row.width,
-        height: row.height,
-        bytes: Number(row.bytes),
-        effectiveDate: effectivePhotoDate(row).effectiveDate,
-        createdAt: row.createdAt,
-      })),
-      nextCursor: more ? rows.at(-1)!.id : null,
-    };
+    return this.prisma.client.$transaction(async (tx) => {
+      if (
+        !(await tx.album.findFirst({
+          where: { id: albumId, groupId },
+          select: { id: true },
+        }))
+      )
+        adminNotFound('ADMIN_ALBUM_NOT_FOUND', '앨범을 찾을 수 없어요.');
+      if (
+        cursor &&
+        !(await tx.photo.findFirst({
+          where: { id: cursor, albumId, groupId },
+          select: { id: true },
+        }))
+      )
+        adminCursorInvalid('ADMIN_PHOTO_CURSOR_INVALID');
+      const after = cursor
+        ? Prisma.sql`AND (p."createdAt",p.id)<(SELECT "createdAt",id FROM woori.photos WHERE id=${cursor}::uuid)`
+        : Prisma.empty;
+      const rows = await tx.$queryRaw<
+        {
+          id: string;
+          status: string;
+          uploaderId: string;
+          uploaderDisplayName: string;
+          width: number | null;
+          height: number | null;
+          bytes: bigint;
+          capturedAt: Date | null;
+          manualCapturedDate: Date | null;
+          createdAt: Date;
+        }[]
+      >(
+        Prisma.sql`SELECT p.id,p.status::text AS status,u.id AS "uploaderId",u."displayName" AS "uploaderDisplayName",p.width,p.height,p.bytes,p."capturedAt",p."manualCapturedDate",p."createdAt" FROM woori.photos p JOIN woori.users u ON u.id=p."uploaderId" WHERE p."albumId"=${albumId}::uuid AND p."groupId"=${groupId}::uuid ${after} ORDER BY p."createdAt" DESC,p.id DESC LIMIT ${limit + 1}`
+      );
+      await writeAdminAudit(tx, {
+        adminId,
+        action: 'ADMIN_ALBUM_PHOTOS_VIEWED',
+        targetType: 'ALBUM',
+        targetId: albumId,
+        metadata: { groupId },
+      });
+      const more = rows.length > limit;
+      if (more) rows.pop();
+      return {
+        items: rows.map((row) => ({
+          id: row.id,
+          status: row.status,
+          uploader: {
+            id: row.uploaderId,
+            displayName: row.uploaderDisplayName,
+          },
+          width: row.width,
+          height: row.height,
+          bytes: Number(row.bytes),
+          effectiveDate: effectivePhotoDate(row).effectiveDate,
+          createdAt: row.createdAt,
+        })),
+        nextCursor: more ? rows.at(-1)!.id : null,
+      };
+    });
   }
 }

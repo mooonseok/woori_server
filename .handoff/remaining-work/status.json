@@ -140,22 +140,27 @@
       "title": "관리자",
       "status": "in_progress",
       "evidence": [
-        "2026-10-15 W06 slice A (admin auth, OpenAPI 0.16.0) and slice B (notices/inquiries/reports/audited photo+comment view, OpenAPI 0.17.0) implemented uncommitted on feature/service-guidance (server + apps/admin). Isolated gates: server unit 102 / integration 148 pass at slice B; client tests 177 pass at slice B.",
-        "Slice A/B verified on an isolated fixture (temporary DB, API 3011, static admin web 3230, private R2 synthetic photos): MFA setup/verify/reauth/logout, member session/origin rejection, report queue, audited photo view (display variant via blob, audit row with reason), reauth prompt after expiry, DELETE_CONTENT photo (same-target auto-resolve, member 404, cleanup job queued), comment view/delete, SUSPEND_USER (old session 401, content kept), inquiry answer visible to member, notice draft/publish/archive/schedule visibility and audit rows.",
-        "Slice C (members/groups/metrics, OpenAPI 0.18.0, migration 20261028000000_admin_member_operations index-only, roster shows suspended members) was in progress when work was paused by the user: typecheck and unit tests (106) pass; integration tests, OpenAPI review, admin web/server contract alignment and browser verification NOT done. Admin web slice C + member-web ACCOUNT_SUSPENDED message done (client tests 195 pass) against spec assumptions.",
-        "Not done: independent review of W06, woori_dev migration (20261026/20261027/20261028) and grant application (needs user approval), admin env setup, records final update. No commit or push of W06."
+        "2026-10-15 W06 slices A (admin auth/TOTP MFA/re-auth/audit, OpenAPI 0.16.0) and B (notices, inquiry answers, report review/dismiss/resolve, audited photo/comment view, OpenAPI 0.17.0) implemented and verified on an isolated fixture DB with private R2 synthetic photos and a static admin web: MFA setup/verify/re-auth/logout, report queue, audited view, photo/comment DELETE_CONTENT, SUSPEND_USER, inquiry answer visible to member, notice draft/publish/archive/schedule visibility, audit rows without secrets.",
+        "2026-10-16 slice C (members list/detail/rename/suspend/unsuspend/delete, group/album/photo metadata, metrics, OpenAPI 0.18.0, migration 20261028000000_admin_member_operations index-only) verified on a fresh isolated fixture: suspended login 403 ACCOUNT_SUSPENDED only with the correct password (wrong password generic 401), old sessions 401 on all member route families, suspended member stays in roster/memberCount and keeps content, ownership transfer to suspended member 409, unsuspend restores login without restoring sessions, owned-group 409 then delete after transfer, admin delete parity with member deletion (identity tombstoned, inquiries deleted, report detail erased, blocks deleted, comments kept as 탈퇴한 회원), member web suspended-login notice, group/album metadata and audited photo view, metrics matching fixture data, dismiss flow.",
+        "2026-10-16 independent review (read-only) found 2 medium + 5 low issues, all fixed and re-verified on the fixture (OpenAPI 0.19.0): no-op mutations now write *_VIEWED audit; suspended members remain report/block targets and notification actors; every admin request requires X-Woori-Request (GET included, preflight allows it); admin_sessions UPDATE column-scoped; album photo list audited (ADMIN_ALBUM_PHOTOS_VIEWED); short email local parts masked; member routes reject the admin web origin (per-area CORS). Isolated gates: server prisma:validate/typecheck/format/policy, unit 106, integration 158; client lint/typecheck/boundaries/format, tests 197, admin and web builds.",
+        "2026-10-16 with explicit user approval and a pg_dump backup, migrations 20261026000000_admin_operations, 20261027000000_admin_content_operations, 20261028000000_admin_member_operations and runtime grants applied to 127.0.0.1:55439/woori_dev via pnpm dev:db:prepare; schema up to date, admin tables RLS on, grants verified, existing 3 users/1 group unchanged; remote DB untouched. Fixture groups deleted, the 3 synthetic photos' R2 objects removed (0 remaining), fixture DB dropped, private fixture files removed, own processes stopped.",
+        "W06 remains in_progress: first admin account/env not yet created by the user in the local environment (ADMIN_WEB_ORIGIN, ADMIN_TOTP_ENCRYPTION_KEY, pnpm admin:create), real screen-reader/200% zoom and Safari/Firefox datetime-local checks, production __Host- cookie mode, and audit/report/inquiry retention decisions remain. Known limitation: a suspended group owner blocks owner management (and their existing invitations) until unsuspended; no admin ownership transfer. Work is uncommitted on feature/admin-operations."
       ],
       "implementationRefs": [
-        "integration/admin-*.test.ts",
+        "feature/admin-operations (uncommitted review fixes on top of develop cecd12f)",
+        "src/admin/**",
         "prisma/migrations/20261026000000_admin_operations",
         "prisma/migrations/20261027000000_admin_content_operations",
         "prisma/migrations/20261028000000_admin_member_operations",
         "prisma/runtime-grants.sql",
         "scripts/admin-accounts.mjs",
-        "src/admin/**"
+        "integration/admin-auth.test.ts",
+        "integration/admin-content.test.ts",
+        "integration/admin-users-groups.test.ts",
+        "contracts/openapi.json 0.19.0"
       ],
       "peerEvidence": [
-        "W06 slice A/B: client and server aligned with contracts/openapi.json 0.17.0 (reporter.status pending in slice C); slice C contract alignment pending."
+        "W06 admin web and member web aligned with contracts/openapi.json 0.19.0 (X-Woori-Request on all admin requests, reporter.status required, slice C error codes, ADMIN_ALBUM_PHOTOS_VIEWED)."
       ]
     },
     {

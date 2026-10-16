@@ -30,13 +30,16 @@ function alreadyDeleted(): never {
     message: '이미 탈퇴한 회원이에요.',
   });
 }
-// First two characters of the local part, then ***@domain. Deleted accounts
-// carry a tombstone address and expose none.
+// Shows min(2, length − 1) characters (code points) of the local part, so a
+// one-character local part shows none, then ***@domain. Deleted accounts carry
+// a tombstone address and expose none.
 export function maskEmail(email: string, status: string) {
   if (status === 'DELETED') return null;
   const at = email.lastIndexOf('@');
   if (at < 1) return null;
-  return `${[...email.slice(0, at)].slice(0, 2).join('')}***@${email.slice(at + 1)}`;
+  const local = [...email.slice(0, at)];
+  const shown = Math.max(0, Math.min(2, local.length - 1));
+  return `${local.slice(0, shown).join('')}***@${email.slice(at + 1)}`;
 }
 // Escapes LIKE wildcards so a query is matched literally.
 export function likeLiteral(value: string) {
@@ -188,15 +191,20 @@ export class AdminUsersRepository {
     return this.prisma.client.$transaction(async (tx) => {
       await readUser(tx, userId);
       const result = await suspendMember(tx, userId);
-      if (result.changed)
-        await writeAdminAudit(tx, {
-          ...userAudit(adminId, userId, reason),
-          action: 'ADMIN_USER_SUSPENDED',
-          metadata: {
-            previousStatus: result.previousStatus,
-            status: 'SUSPENDED',
-          },
-        });
+      // Already suspended: nothing changes, but the detail is disclosed.
+      await writeAdminAudit(
+        tx,
+        result.changed
+          ? {
+              ...userAudit(adminId, userId, reason),
+              action: 'ADMIN_USER_SUSPENDED',
+              metadata: {
+                previousStatus: result.previousStatus,
+                status: 'SUSPENDED',
+              },
+            }
+          : { ...userAudit(adminId, userId), action: 'ADMIN_USER_VIEWED' }
+      );
       return userDetail(tx, userId);
     });
   }

@@ -139,7 +139,8 @@ test('isolated PostgreSQL: admin notices, inquiries, reports and audited content
         .send({ code: totpCode(secret, Date.now()) })
         .expect(200)
     );
-    const get = (path: string) => as(api.get(path), token);
+    const get = (path: string) =>
+      as(api.get(path).set('X-Woori-Request', '1'), token);
     const post = (path: string) => as(adminMutation(api.post(path)), token);
     const patch = (path: string) => as(adminMutation(api.patch(path)), token);
     const staleReauth = () =>
@@ -328,7 +329,7 @@ test('isolated PostgreSQL: admin notices, inquiries, reports and audited content
           const asPending = await send(
             as(
               method === 'get'
-                ? api.get(path)
+                ? api.get(path).set('X-Woori-Request', '1')
                 : adminMutation(api[method](path)),
               pending
             )
@@ -603,9 +604,16 @@ test('isolated PostgreSQL: admin notices, inquiries, reports and audited content
           .send({ status: 'CLOSED' })
           .expect(200);
         assert.equal(closed.body.status, 'CLOSED');
+        // The same status changes nothing but discloses the inquiry: one VIEWED
+        // row and no further STATUS_CHANGED row.
+        const viewsBefore = (await audits('ADMIN_INQUIRY_VIEWED', id)).length;
         await post(`/v1/admin/inquiries/${id}/status`)
           .send({ status: 'CLOSED' })
           .expect(200);
+        assert.equal(
+          (await audits('ADMIN_INQUIRY_VIEWED', id)).length,
+          viewsBefore + 1
+        );
         assert.deepEqual(
           (await audits('ADMIN_INQUIRY_STATUS_CHANGED', id)).map(
             (row) => row.metadata
@@ -850,11 +858,15 @@ test('isolated PostgreSQL: admin notices, inquiries, reports and audited content
           .send({})
           .expect(200);
         assert.equal(reviewed.body.status, 'REVIEWING');
+        assert.equal((await audits('ADMIN_REPORT_VIEWED', rDismiss)).length, 0);
+        // Already REVIEWING: no state change, but the response discloses the
+        // report, so exactly one VIEWED row and no second REVIEWED row.
         await post(`/v1/admin/reports/${rDismiss}/review`).send({}).expect(200);
         assert.equal(
           (await audits('ADMIN_REPORT_REVIEWED', rDismiss)).length,
           1
         );
+        assert.equal((await audits('ADMIN_REPORT_VIEWED', rDismiss)).length, 1);
         await post(`/v1/admin/reports/${rDismiss}/dismiss`)
           .send({})
           .expect(400);

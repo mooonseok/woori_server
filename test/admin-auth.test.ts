@@ -182,12 +182,18 @@ test('admin origin check rejects the member web origin and missing CSRF header',
       get: (name: string) => headers[name.toLowerCase()],
     }) as unknown as Request;
   const allowed = [
-    of('GET', {}),
-    of('GET', { origin: config.webOrigin }),
+    of('GET', { 'x-woori-request': '1' }),
+    of('HEAD', { 'x-woori-request': '1' }),
+    of('GET', { origin: config.webOrigin, 'x-woori-request': '1' }),
     of('POST', { origin: config.webOrigin, 'x-woori-request': '1' }),
   ];
   for (const req of allowed) checkAdminOrigin(req, config);
   for (const req of [
+    // Audited GETs also need the custom header (no simple cross-site request).
+    of('GET', {}),
+    of('GET', { origin: config.webOrigin }),
+    of('HEAD', {}),
+    of('GET', { origin: 'https://app.example.test', 'x-woori-request': '1' }),
     of('GET', { origin: 'https://app.example.test' }),
     of('POST', { 'x-woori-request': '1' }),
     of('POST', { origin: config.webOrigin }),
@@ -291,6 +297,23 @@ test('admin configuration is optional but fails fast when set incorrectly', () =
       ADMIN_TOTP_ENCRYPTION_KEY: key,
     }).admin,
     { webOrigin: 'https://admin.example.test', totpEncryptionKey: key }
+  );
+  // The admin web origin is removed from member routes unless it is WEB_ORIGIN.
+  assert.deepEqual(
+    runtimeConfig({
+      CORS_ALLOWED_ORIGINS: origins,
+      ADMIN_WEB_ORIGIN: 'https://admin.example.test',
+      WEB_ORIGIN: 'https://app.example.test',
+    }).memberOrigins,
+    ['https://app.example.test']
+  );
+  assert.deepEqual(
+    runtimeConfig({
+      CORS_ALLOWED_ORIGINS: 'https://app.example.test',
+      ADMIN_WEB_ORIGIN: 'https://app.example.test',
+      WEB_ORIGIN: 'https://app.example.test',
+    }).memberOrigins,
+    ['https://app.example.test']
   );
   for (const env of [
     // Not CORS-allowed.
@@ -487,6 +510,33 @@ test('configured admin realm: guards run without consulting member sessions or t
     );
     const memberRoute = await api.get('/healthz').set('Origin', member);
     assert.equal(memberRoute.headers['access-control-allow-origin'], member);
+    // Per-realm allow-lists: the admin web origin is not a member-web origin.
+    const memberFromAdmin = await api
+      .get('/healthz')
+      .set('Origin', adminOrigin);
+    assert.equal(
+      memberFromAdmin.headers['access-control-allow-origin'],
+      undefined
+    );
+    const preflight = await api
+      .options('/v1/groups')
+      .set('Origin', adminOrigin)
+      .set('Access-Control-Request-Method', 'POST');
+    assert.equal(preflight.headers['access-control-allow-origin'], undefined);
+    const mutation = await api
+      .post('/v1/groups')
+      .set('Origin', adminOrigin)
+      .set('X-Woori-Request', '1')
+      .send({ name: '관리자 웹에서' })
+      .expect(403);
+    assert.equal(mutation.body.code, 'REQUEST_ORIGIN_REJECTED');
+    // The member web origin still reaches member routes (401: no session).
+    await api
+      .post('/v1/groups')
+      .set('Origin', member)
+      .set('X-Woori-Request', '1')
+      .send({ name: '회원 웹에서' })
+      .expect(401);
     // Settings are read per request: removing one closes the admin realm.
     delete process.env.ADMIN_TOTP_ENCRYPTION_KEY;
     const closed = await api.get('/v1/admin/auth/me').expect(503);

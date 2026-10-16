@@ -1913,8 +1913,24 @@ test('real PostgreSQL: authentication, private groups and single-use invitation 
           'deleted targets and revoked membership immediately disappear from inbox, unread counts and target routes',
           async () => {
             const before = await inbox(owner);
+            // W06: a suspended actor stays in the roster, so its earlier
+            // activity stays in other members' inboxes (no suspension signal).
             await admin.query(
               "UPDATE woori.users SET status='SUSPENDED' WHERE id=$1",
+              [winner.id]
+            );
+            assert.equal(
+              (await inbox(owner)).notifications.some(
+                (item) => item.photoId === photo
+              ),
+              true
+            );
+            await owner.agent
+              .get(`${base}/${generalNotice.id}/target`)
+              .expect(200);
+            // A withdrawn (DELETED) actor's activity disappears immediately.
+            await admin.query(
+              "UPDATE woori.users SET status='DELETED' WHERE id=$1",
               [winner.id]
             );
             assert.equal(

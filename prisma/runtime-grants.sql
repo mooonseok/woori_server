@@ -41,8 +41,14 @@ GRANT SELECT ON woori.admin_accounts TO woori_api;
 REVOKE INSERT, UPDATE, DELETE ON woori.admin_accounts FROM woori_api;
 GRANT UPDATE ("totpSecretCiphertext", "totpEnabledAt", "totpLastUsedStep",
   "failedLoginCount", "lockedUntil", "lastLoginAt") ON woori.admin_accounts TO woori_api;
--- Admin sessions are revoked, never deleted.
-GRANT SELECT, INSERT, UPDATE ON woori.admin_sessions TO woori_api;
+-- Admin sessions are revoked, never deleted. UPDATE is column-scoped to the
+-- lifecycle columns the API changes (token rotation, MFA/re-auth times, idle
+-- sliding, failure count, revocation); id, adminId and createdAt never change.
+-- REVOKE first so re-applying this file removes a table-wide UPDATE.
+GRANT SELECT, INSERT ON woori.admin_sessions TO woori_api;
+REVOKE UPDATE ON woori.admin_sessions FROM woori_api;
+GRANT UPDATE ("tokenHash", "expiresAt", "idleExpiresAt", "mfaVerifiedAt",
+  "reauthAt", "mfaFailedCount", "revokedAt") ON woori.admin_sessions TO woori_api;
 -- The admin audit log is append-only for the runtime role.
 GRANT SELECT, INSERT ON woori.admin_audit_logs TO woori_api;
 REVOKE UPDATE, DELETE ON woori.admin_audit_logs FROM woori_api;
