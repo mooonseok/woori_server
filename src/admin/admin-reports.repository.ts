@@ -227,12 +227,18 @@ export class AdminReportsRepository {
       return detail;
     });
   }
-  // RECEIVED → REVIEWING; already REVIEWING is a no-op.
+  // RECEIVED → REVIEWING. Already REVIEWING changes nothing but the response
+  // still discloses the report (reporter text): audited as a view.
   review(adminId: string, reportId: string) {
     return this.prisma.client.$transaction(async (tx) => {
       const status = await lockReport(tx, reportId);
       if (!isOpen(status)) alreadyClosed();
-      if (status === 'RECEIVED') {
+      if (status !== 'RECEIVED')
+        await writeAdminAudit(
+          tx,
+          reportAudit(adminId, reportId, 'ADMIN_REPORT_VIEWED')
+        );
+      else {
         await tx.contentReport.update({
           where: { id: reportId },
           data: { status: 'REVIEWING' },

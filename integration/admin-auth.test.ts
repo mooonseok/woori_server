@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { Pool } from 'pg';
 import request from 'supertest';
@@ -62,6 +62,9 @@ test('isolated PostgreSQL: separate admin authentication, TOTP MFA, sessions and
     const api = request(app.getHttpServer());
     const adminMutation = (op: Test) =>
       op.set('Origin', adminOrigin).set('X-Woori-Request', '1');
+    // Every admin request (GET included) carries the custom CSRF header.
+    const adminGet = (path: string) =>
+      api.get(path).set('X-Woori-Request', '1');
     const as = (op: Test, token: string) =>
       op.set('Cookie', `${COOKIE}=${token}`);
     const setCookie = (res: Response) =>
@@ -196,13 +199,28 @@ test('isolated PostgreSQL: separate admin authentication, TOTP MFA, sessions and
             delete: false,
             truncate: false,
           });
+          // Column-scoped UPDATE: no table-wide UPDATE privilege.
           assert.deepEqual(await privileges('admin_sessions'), {
             read: true,
             insert: true,
-            update: true,
+            update: false,
             delete: false,
             truncate: false,
           });
+          const sessionColumns = (
+            await runtime.query(
+              "SELECT a.attname AS name FROM pg_attribute a WHERE a.attrelid='woori.admin_sessions'::regclass AND a.attnum>0 AND NOT a.attisdropped AND has_column_privilege(current_user, 'woori.admin_sessions', a.attname, 'UPDATE') ORDER BY a.attname"
+            )
+          ).rows.map((row: { name: string }) => row.name);
+          assert.deepEqual(sessionColumns, [
+            'expiresAt',
+            'idleExpiresAt',
+            'mfaFailedCount',
+            'mfaVerifiedAt',
+            'reauthAt',
+            'revokedAt',
+            'tokenHash',
+          ]);
           assert.deepEqual(await privileges('admin_audit_logs'), {
             read: true,
             insert: true,
@@ -242,6 +260,9 @@ test('isolated PostgreSQL: separate admin authentication, TOTP MFA, sessions and
             'DELETE FROM woori.admin_audit_logs',
             'TRUNCATE woori.admin_audit_logs',
             'DELETE FROM woori.admin_sessions',
+            `UPDATE woori.admin_sessions SET "adminId"='${randomUUID()}'`,
+            'UPDATE woori.admin_sessions SET "createdAt"=now()',
+            `UPDATE woori.admin_sessions SET id='${randomUUID()}'`,
           ])
             await assert.rejects(runtime.query(sql), denied, sql);
         } finally {
@@ -404,14 +425,14 @@ test('isolated PostgreSQL: separate admin authentication, TOTP MFA, sessions and
         assert.equal((await account(admin.id)).failedLoginCount, 1);
         assert.equal((await account(admin.id)).lastLoginAt, null);
 
-        const me = await as(api.get('/v1/admin/auth/me'), token).expect(200);
+        const me = await as(adminGet('/v1/admin/auth/me'), token).expect(200);
         assert.deepEqual(Object.keys(me.body).sort(), meKeys);
         assert.equal(me.body.mfa, 'SETUP_REQUIRED');
         assert.equal(me.body.reauthValidUntil, null);
         // Pre-MFA sessions reach only me, MFA and logout.
         for (const op of [
-          as(api.get('/v1/admin/audit-logs'), token),
-          as(api.get('/v1/admin/users'), token),
+          as(adminGet('/v1/admin/audit-logs'), token),
+          as(adminGet('/v1/admin/users'), token),
           as(adminMutation(api.post('/v1/admin/auth/reauth')), token).send({
             password,
             code: '123456',
@@ -434,9 +455,11 @@ test('isolated PostgreSQL: separate admin authentication, TOTP MFA, sessions and
         const rotated = tokenOf(again);
         assert.notEqual(rotated, token);
         assert.ok((await sessionOf(token)).revokedAt);
-        const stale = await as(api.get('/v1/admin/auth/me'), token).expect(401);
+        const stale = await as(adminGet('/v1/admin/auth/me'), token).expect(
+          401
+        );
         assert.equal(stale.body.code, 'ADMIN_AUTHENTICATION_REQUIRED');
-        await as(api.get('/v1/admin/auth/me'), rotated).expect(200);
+        await as(adminGet('/v1/admin/auth/me'), rotated).expect(200);
         // A disabled admin gets the same generic answer.
         const client = await owner.connect();
         try {
@@ -448,7 +471,7 @@ test('isolated PostgreSQL: separate admin authentication, TOTP MFA, sessions and
           (await login(admin.username).expect(401)).body,
           unknown.body
         );
-        await as(api.get('/v1/admin/auth/me'), rotated).expect(401);
+        await as(adminGet('/v1/admin/auth/me'), rotated).expect(401);
       }
     );
 
@@ -530,7 +553,7 @@ test('isolated PostgreSQL: separate admin authentication, TOTP MFA, sessions and
         assert.match(setCookie(activated)!, /Max-Age=28800\b/);
         const token = tokenOf(activated);
         assert.notEqual(token, pre);
-        await as(api.get('/v1/admin/auth/me'), pre).expect(401);
+        await as(adminGet('/v1/admin/auth/me'), pre).expect(401);
         const after = await account(admin.id);
         assert.ok(after.totpEnabledAt);
         assert.ok(after.lastLoginAt);
@@ -559,7 +582,7 @@ test('isolated PostgreSQL: separate admin authentication, TOTP MFA, sessions and
 
         // Next login: TOTP is required, setup/activate are closed.
         const next = tokenOf(await login(admin.username).expect(200));
-        const me = await as(api.get('/v1/admin/auth/me'), next).expect(200);
+        const me = await as(adminGet('/v1/admin/auth/me'), next).expect(200);
         assert.equal(me.body.mfa, 'REQUIRED');
         for (const path of ['setup', 'activate']) {
           const res = await as(
@@ -596,13 +619,13 @@ test('isolated PostgreSQL: separate admin authentication, TOTP MFA, sessions and
         assert.equal((await account(admin.id)).failedLoginCount, 0);
         enrolled = { id: admin.id, username: admin.username, secret };
         // Verified sessions can read the audit log; unknown admin paths 404.
-        await as(api.get('/v1/admin/audit-logs'), verifiedToken).expect(200);
+        await as(adminGet('/v1/admin/audit-logs'), verifiedToken).expect(200);
         // (users became a real admin route in W06 slice C.)
         for (const path of [
           '/v1/admin/no-such-feature',
           '/api/v1/admin/users',
         ]) {
-          const missing = await as(api.get(path), verifiedToken).expect(404);
+          const missing = await as(adminGet(path), verifiedToken).expect(404);
           assert.equal(missing.body.code, 'ADMIN_NOT_FOUND', path);
         }
       }
@@ -635,7 +658,7 @@ test('isolated PostgreSQL: separate admin authentication, TOTP MFA, sessions and
         assert.ok(revoked.revokedAt);
         assert.equal(revoked.mfaFailedCount, 5);
         assert.equal((await account(admin.id)).lockedUntil, null);
-        const gone = await as(api.get('/v1/admin/auth/me'), pre).expect(401);
+        const gone = await as(adminGet('/v1/admin/auth/me'), pre).expect(401);
         assert.equal(gone.body.code, 'ADMIN_AUTHENTICATION_REQUIRED');
         assert.equal(
           (await audits(admin.id, 'ADMIN_MFA_FAILED')).at(-1).metadata
@@ -749,7 +772,7 @@ test('isolated PostgreSQL: separate admin authentication, TOTP MFA, sessions and
           [hashToken(verifiedToken)]
         );
         const stale = await as(
-          api.get('/v1/admin/auth/me'),
+          adminGet('/v1/admin/auth/me'),
           verifiedToken
         ).expect(200);
         assert.equal(stale.body.reauthValidUntil, null);
@@ -765,7 +788,7 @@ test('isolated PostgreSQL: separate admin authentication, TOTP MFA, sessions and
         }).expect(401);
         assert.deepEqual(wrongCode.body, wrongPassword.body);
         assert.equal((await account(id)).failedLoginCount, 2);
-        await as(api.get('/v1/admin/auth/me'), verifiedToken).expect(200);
+        await as(adminGet('/v1/admin/auth/me'), verifiedToken).expect(200);
         const code = totpCode(secret, Date.now());
         const ok = await reauth({ password, code }).expect(200);
         assert.ok(
@@ -794,7 +817,7 @@ test('isolated PostgreSQL: separate admin authentication, TOTP MFA, sessions and
         }).expect(401);
         assert.match(setCookie(locking)!, /woori_admin_session=;/);
         assert.ok((await account(id)).lockedUntil);
-        await as(api.get('/v1/admin/auth/me'), verifiedToken).expect(401);
+        await as(adminGet('/v1/admin/auth/me'), verifiedToken).expect(401);
         assert.deepEqual(
           (await audits(id, 'ADMIN_LOCKED')).map((row) => row.metadata),
           [{ stage: 'REAUTH' }]
@@ -812,7 +835,7 @@ test('isolated PostgreSQL: separate admin authentication, TOTP MFA, sessions and
         await resetIpLimits();
         const admin = await createAdmin('expiry');
         const fresh = async () => (await verified(admin)).token;
-        const me = (token: string) => as(api.get('/v1/admin/auth/me'), token);
+        const me = (token: string) => as(adminGet('/v1/admin/auth/me'), token);
         // Idle sliding: written when at least a minute can be gained.
         const sliding = await fresh();
         await owner.query(
@@ -893,9 +916,9 @@ test('isolated PostgreSQL: separate admin authentication, TOTP MFA, sessions and
           op.set('Cookie', `woori_session=${memberToken}`);
         await member(api.get('/v1/auth/me')).expect(200);
         for (const op of [
-          member(api.get('/v1/admin/auth/me')),
-          member(api.get('/v1/admin/audit-logs')),
-          member(api.get('/v1/admin')),
+          member(adminGet('/v1/admin/auth/me')),
+          member(adminGet('/v1/admin/audit-logs')),
+          member(adminGet('/v1/admin')),
           member(
             api
               .post('/v1/admin/auth/mfa/setup')
@@ -912,8 +935,7 @@ test('isolated PostgreSQL: separate admin authentication, TOTP MFA, sessions and
         }
         // Both cookies at once: each realm still sees only its own session.
         const both = `woori_session=${memberToken}; ${COOKIE}=${token}`;
-        const meBoth = await api
-          .get('/v1/admin/auth/me')
+        const meBoth = await adminGet('/v1/admin/auth/me')
           .set('Cookie', both)
           .expect(200);
         assert.equal(meBoth.body.admin.id, admin.id);
@@ -922,10 +944,52 @@ test('isolated PostgreSQL: separate admin authentication, TOTP MFA, sessions and
           .set('Cookie', both)
           .expect(200);
         assert.notEqual(memberBoth.body.user.id, admin.id);
+        // An audited admin GET without X-Woori-Request is rejected even with a
+        // valid session (with or without the admin web Origin).
+        for (const op of [
+          as(api.get('/v1/admin/auth/me'), token),
+          as(api.get('/v1/admin/audit-logs').set('Origin', adminOrigin), token),
+          as(api.head('/v1/admin/auth/me'), token),
+        ])
+          await op.expect(403);
+        const noHeader = await as(
+          api.get('/v1/admin/audit-logs'),
+          token
+        ).expect(403);
+        assert.equal(noHeader.body.code, 'REQUEST_ORIGIN_REJECTED');
+        await as(adminGet('/v1/admin/auth/me'), token).expect(200);
+        // Per-realm origins: the admin web origin cannot mutate member routes
+        // (even with a member session) and gets no CORS grant there.
+        const fromAdminWeb = await member(
+          api
+            .post('/v1/inquiries')
+            .set('Origin', adminOrigin)
+            .set('X-Woori-Request', '1')
+        )
+          .send({ category: 'OTHER', title: '관리자 웹', body: '본문' })
+          .expect(403);
+        assert.equal(fromAdminWeb.body.code, 'REQUEST_ORIGIN_REJECTED');
+        const memberPreflight = await api
+          .options('/v1/inquiries')
+          .set('Origin', adminOrigin)
+          .set('Access-Control-Request-Method', 'POST');
+        assert.equal(
+          memberPreflight.headers['access-control-allow-origin'],
+          undefined
+        );
+        const adminPreflight = await api
+          .options('/v1/admin/auth/me')
+          .set('Origin', adminOrigin)
+          .set('Access-Control-Request-Method', 'GET')
+          .set('Access-Control-Request-Headers', 'x-woori-request');
+        assert.equal(
+          adminPreflight.headers['access-control-allow-origin'],
+          adminOrigin
+        );
         // Valid admin session + member web origin → rejected.
         for (const op of [
           as(
-            api.get('/v1/admin/audit-logs').set('Origin', memberOrigin),
+            adminGet('/v1/admin/audit-logs').set('Origin', memberOrigin),
             token
           ),
           as(
@@ -947,7 +1011,7 @@ test('isolated PostgreSQL: separate admin authentication, TOTP MFA, sessions and
         // while member routes keep working.
         delete process.env.ADMIN_TOTP_ENCRYPTION_KEY;
         try {
-          const closed = await as(api.get('/v1/admin/auth/me'), token).expect(
+          const closed = await as(adminGet('/v1/admin/auth/me'), token).expect(
             503
           );
           assert.equal(closed.body.code, 'ADMIN_NOT_CONFIGURED');
@@ -955,7 +1019,7 @@ test('isolated PostgreSQL: separate admin authentication, TOTP MFA, sessions and
         } finally {
           process.env.ADMIN_TOTP_ENCRYPTION_KEY = totpKey;
         }
-        await as(api.get('/v1/admin/auth/me'), token).expect(200);
+        await as(adminGet('/v1/admin/auth/me'), token).expect(200);
       }
     );
 
@@ -966,7 +1030,7 @@ test('isolated PostgreSQL: separate admin authentication, TOTP MFA, sessions and
         const admin = await createAdmin('audit');
         const { token } = await verified(admin);
         const list = (qs: string) =>
-          as(api.get(`/v1/admin/audit-logs${qs}`), token);
+          as(adminGet(`/v1/admin/audit-logs${qs}`), token);
         const total = (
           await query('SELECT count(*)::int AS n FROM woori.admin_audit_logs')
         )[0].n as number;
@@ -1072,7 +1136,7 @@ test('isolated PostgreSQL: separate admin authentication, TOTP MFA, sessions and
         try {
           const reset = await resetAdminMfa(client, admin.username);
           assert.equal(reset.revokedSessions, 1);
-          await as(api.get('/v1/admin/auth/me'), token).expect(401);
+          await as(adminGet('/v1/admin/auth/me'), token).expect(401);
           const cleared = await account(admin.id);
           assert.equal(cleared.totpSecretCiphertext, null);
           assert.equal(cleared.totpEnabledAt, null);

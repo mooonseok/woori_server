@@ -140,7 +140,8 @@ export class AdminInquiriesRepository {
       return detail(inquiry);
     });
   }
-  // Any status may move to IN_PROGRESS or CLOSED; the same status is a no-op.
+  // Any status may move to IN_PROGRESS or CLOSED. The same status changes
+  // nothing, but the response still discloses the inquiry: audited as a view.
   changeStatus(
     adminId: string,
     inquiryId: string,
@@ -148,13 +149,21 @@ export class AdminInquiriesRepository {
   ) {
     return this.prisma.client.$transaction(async (tx) => {
       const current = await lockInquiry(tx, inquiryId);
-      if (current.status === status)
+      if (current.status === status) {
+        await writeAdminAudit(tx, {
+          adminId,
+          action: 'ADMIN_INQUIRY_VIEWED',
+          targetType: 'INQUIRY',
+          targetId: inquiryId,
+          metadata: { userId: current.userId },
+        });
         return detail(
           await tx.inquiry.findUniqueOrThrow({
             where: { id: inquiryId },
             select: inquiryDetail,
           })
         );
+      }
       const inquiry = await tx.inquiry.update({
         where: { id: inquiryId },
         data: { status },

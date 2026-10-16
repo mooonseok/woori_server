@@ -18,8 +18,14 @@ export class AdminGroupsService {
   view(adminId: string, groupId: string) {
     return this.repository.view(adminId, groupId);
   }
-  albumPhotos(groupId: string, albumId: string, query: AdminAlbumPhotoListDto) {
+  albumPhotos(
+    adminId: string,
+    groupId: string,
+    albumId: string,
+    query: AdminAlbumPhotoListDto
+  ) {
     return this.repository.albumPhotos(
+      adminId,
       groupId,
       albumId,
       query.limit,

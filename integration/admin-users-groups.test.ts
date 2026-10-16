@@ -111,7 +111,8 @@ test('isolated PostgreSQL: admin member and group management, suspension, deleti
         .send({ code: totpCode(secret, Date.now()) })
         .expect(200)
     );
-    const get = (path: string) => as(api.get(path), token);
+    const get = (path: string) =>
+      as(api.get(path).set('X-Woori-Request', '1'), token);
     const post = (path: string) => as(adminMutation(api.post(path)), token);
     const patch = (path: string) => as(adminMutation(api.patch(path)), token);
     const staleReauth = () =>
@@ -290,7 +291,7 @@ test('isolated PostgreSQL: admin member and group management, suspension, deleti
           const asPending = await send(
             as(
               method === 'get'
-                ? api.get(path)
+                ? api.get(path).set('X-Woori-Request', '1')
                 : adminMutation(api[method](path)),
               pending
             )
@@ -511,6 +512,9 @@ test('isolated PostgreSQL: admin member and group management, suspension, deleti
           .send({ reason: '반복 신고 확인 후 정지' })
           .expect(200);
         assert.equal(suspended.body.status, 'SUSPENDED');
+        // Already suspended: no change, but the detail is disclosed, so one
+        // VIEWED row and no second SUSPENDED row.
+        const viewsBefore = (await audits('ADMIN_USER_VIEWED', m1.id)).length;
         await post(`/v1/admin/users/${m1.id}/suspend`)
           .send({ reason: '반복 신고 확인 후 정지' })
           .expect(200);
@@ -518,10 +522,46 @@ test('isolated PostgreSQL: admin member and group management, suspension, deleti
         assert.equal(
           suspendAudit.length,
           1,
-          'idempotent suspension audited once'
+          'idempotent suspension audited once as a suspension'
+        );
+        assert.equal(
+          (await audits('ADMIN_USER_VIEWED', m1.id)).length,
+          viewsBefore + 1
         );
         assert.equal(suspendAudit[0].reason, '반복 신고 확인 후 정지');
 
+        // Other members still treat the suspended member like anyone in the
+        // roster: reportable, blockable, and its earlier activity stays in
+        // their inboxes (no suspension signal to the family).
+        await memberMutation(head.agent.post('/v1/reports'))
+          .send({
+            targetType: 'USER',
+            targetId: m1.id,
+            groupId,
+            reason: 'OTHER',
+          })
+          .expect(201);
+        await memberMutation(head.agent.put(`/v1/blocks/${m1.id}`)).expect(200);
+        await memberMutation(head.agent.delete(`/v1/blocks/${m1.id}`)).expect(
+          204
+        );
+        const m2Notice = (
+          await query(
+            'SELECT id FROM woori.notifications WHERE "recipientId"=$1 AND "targetId"=$2',
+            [m2.id, m1Comment]
+          )
+        )[0];
+        assert.ok(m2Notice, 'm1 comment notified m2 before suspension');
+        assert.ok(
+          (
+            await m2.agent.get('/v1/notifications?limit=50').expect(200)
+          ).body.notifications.some(
+            (item: { id: string }) => item.id === m2Notice.id
+          )
+        );
+        await m2.agent
+          .get(`/v1/notifications/${m2Notice.id}/target`)
+          .expect(200);
         // The old member cookie no longer works on any route family.
         for (const path of [
           '/v1/auth/me',
@@ -1042,7 +1082,12 @@ test('isolated PostgreSQL: admin member and group management, suspension, deleti
         );
         const photos: string[] = [];
         let cursor: string | null = null;
+        let pages = 0;
+        const albumViews = async () =>
+          (await audits('ADMIN_ALBUM_PHOTOS_VIEWED', albumId)).length;
+        const albumViewsBefore = await albumViews();
         do {
+          pages++;
           const page: Response = await get(
             `/v1/admin/groups/${groupId}/albums/${albumId}/photos?limit=2${cursor ? `&cursor=${cursor}` : ''}`
           ).expect(200);
@@ -1064,6 +1109,15 @@ test('isolated PostgreSQL: admin member and group management, suspension, deleti
         } while (cursor);
         assert.ok(
           [m2Photo, leaverPhoto, m1Photo].every((id) => photos.includes(id))
+        );
+        // Every page of album metadata is audited (target ALBUM, groupId only).
+        assert.equal(await albumViews(), albumViewsBefore + pages);
+        assert.deepEqual(
+          (await audits('ADMIN_ALBUM_PHOTOS_VIEWED', albumId)).map((row) => [
+            row.targetType,
+            row.metadata,
+          ])[0],
+          ['ALBUM', { groupId }]
         );
         assert.equal(new Set(photos).size, photos.length);
         assert.equal(

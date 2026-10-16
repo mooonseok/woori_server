@@ -27,14 +27,15 @@ export async function createApp() {
       next();
     }
   );
-  // Explicit origin list; empty means no cross-origin browser access. Admin
-  // routes are readable only from ADMIN_WEB_ORIGIN, never the member web.
+  // Explicit per-realm origin lists; empty means no cross-origin browser
+  // access. /v1/admin/** is readable only from ADMIN_WEB_ORIGIN; member routes
+  // never answer the admin web origin (unless it is also WEB_ORIGIN).
   const adminOrigins = config.admin ? [config.admin.webOrigin] : [];
   app.enableCors((request: import('express').Request, callback) =>
     callback(null, {
       origin: ADMIN_PATH_PATTERN.test(request.path ?? request.url ?? '')
         ? adminOrigins
-        : config.allowedOrigins,
+        : config.memberOrigins,
       credentials: true,
     })
   );

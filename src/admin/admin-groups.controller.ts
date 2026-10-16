@@ -26,9 +26,15 @@ export class AdminGroupsController {
   }
   @Get(':groupId/albums/:albumId/photos')
   albumPhotos(
+    @CurrentAdmin() session: AdminSessionContext,
     @Param() params: AdminAlbumParamsDto,
     @Query() query: AdminAlbumPhotoListDto
   ) {
-    return this.service.albumPhotos(params.groupId, params.albumId, query);
+    return this.service.albumPhotos(
+      session.admin.id,
+      params.groupId,
+      params.albumId,
+      query
+    );
   }
 }

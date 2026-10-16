@@ -6,16 +6,24 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { runtimeConfig } from '../configurations/runtime.config';
+import { ADMIN_PATH_PATTERN } from '../decorators/admin-route.decorator';
 @Injectable()
 export class OriginGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<Request>();
     if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return true;
     const origin = request.get('Origin');
+    // Per-realm allow-lists: member routes reject the admin web origin; admin
+    // routes accept the full list here and the admin guard then requires the
+    // exact ADMIN_WEB_ORIGIN (after its session check).
+    const config = runtimeConfig();
+    const allowed = ADMIN_PATH_PATTERN.test(request.path)
+      ? config.allowedOrigins
+      : config.memberOrigins;
     // Both checks are necessary: untrusted origins cannot send this header via CORS.
     if (
       !origin ||
-      !runtimeConfig().allowedOrigins.includes(origin) ||
+      !allowed.includes(origin) ||
       request.get('X-Woori-Request') !== '1'
     ) {
       throw new ForbiddenException({

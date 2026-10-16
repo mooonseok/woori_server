@@ -36,6 +36,7 @@ export const ADMIN_AUDIT_ACTIONS = [
   'ADMIN_USER_UNSUSPENDED',
   'ADMIN_USER_DELETED',
   'ADMIN_GROUP_VIEWED',
+  'ADMIN_ALBUM_PHOTOS_VIEWED',
 ] as const;
 export type AdminAuditAction = (typeof ADMIN_AUDIT_ACTIONS)[number];
 export type AdminAuditTargetType =
@@ -46,7 +47,8 @@ export type AdminAuditTargetType =
   | 'PHOTO'
   | 'COMMENT'
   | 'USER'
-  | 'GROUP';
+  | 'GROUP'
+  | 'ALBUM';
 export const ADMIN_AUDIT_METADATA_KEYS = [
   'stage',
   'reason',

@@ -15,7 +15,8 @@ export function userNotFound(): never {
   });
 }
 // A user is blockable only when the blocker can currently see them: a shared
-// active group with both memberships active, or retained content (READY photo,
+// active group with both memberships active (the target ACTIVE or SUSPENDED, as
+// in the group roster), or retained content (READY photo,
 // non-deleted comment, reaction on a READY photo) in an active group where the
 // blocker is an active member. This also covers withdrawn or departed authors and
 // prevents enumerating arbitrary ids.
@@ -23,7 +24,7 @@ function visibleUser(blockerId: string, targetId: string) {
   const blockerGroup = (alias: string) =>
     Prisma.sql`JOIN woori.groups g ON g.id=${Prisma.raw(alias)}."groupId" AND g.status='ACTIVE' JOIN woori.memberships mb ON mb."groupId"=g.id AND mb."userId"=${blockerId}::uuid AND mb.status='ACTIVE'`;
   return Prisma.sql`SELECT u.id FROM woori.users u WHERE u.id=${targetId}::uuid AND (
-    (u.status='ACTIVE' AND EXISTS (SELECT 1 FROM woori.memberships mt ${blockerGroup('mt')} WHERE mt."userId"=u.id AND mt.status='ACTIVE'))
+    (u.status IN ('ACTIVE','SUSPENDED') AND EXISTS (SELECT 1 FROM woori.memberships mt ${blockerGroup('mt')} WHERE mt."userId"=u.id AND mt.status='ACTIVE'))
     OR EXISTS (SELECT 1 FROM woori.photos p ${blockerGroup('p')} WHERE p."uploaderId"=u.id AND p.status='READY' AND p."deletedAt" IS NULL)
     OR EXISTS (SELECT 1 FROM woori.comments c JOIN woori.photos p ON p.id=c."photoId" AND p.status='READY' AND p."deletedAt" IS NULL ${blockerGroup('c')} WHERE c."authorId"=u.id AND c."deletedAt" IS NULL)
     OR EXISTS (SELECT 1 FROM woori.reactions r JOIN woori.photos p ON p.id=r."photoId" AND p.status='READY' AND p."deletedAt" IS NULL ${blockerGroup('p')} WHERE r."userId"=u.id)

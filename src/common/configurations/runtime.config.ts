@@ -2,7 +2,11 @@ import { adminConfig, type AdminConfig } from './admin.config';
 export interface RuntimeConfig {
   port: number;
   trustedProxyHops: number;
+  // Every browser origin the API knows (CORS_ALLOWED_ORIGINS).
   allowedOrigins: string[];
+  // Member routes: the allow-list without ADMIN_WEB_ORIGIN, which is reserved
+  // for /v1/admin unless it is also the member WEB_ORIGIN.
+  memberOrigins: string[];
   databaseUrl?: string;
   admin: AdminConfig | null;
 }
@@ -35,12 +39,19 @@ export function runtimeConfig(
         'CORS_ALLOWED_ORIGINS must contain exact HTTP(S) origins'
       );
   }
+  // Validated at startup: a set ADMIN_WEB_ORIGIN must be an exact origin that
+  // is listed in CORS_ALLOWED_ORIGINS (one place lists every browser origin).
+  const admin = adminConfig(env, allowedOrigins);
+  const adminWebOrigin = env.ADMIN_WEB_ORIGIN?.trim() || undefined;
+  const webOrigin = env.WEB_ORIGIN?.trim() || undefined;
   return {
     port,
     trustedProxyHops,
     allowedOrigins,
+    memberOrigins: allowedOrigins.filter(
+      (origin) => origin !== adminWebOrigin || origin === webOrigin
+    ),
     databaseUrl: env.DATABASE_URL || undefined,
-    // Validated at startup: a set ADMIN_WEB_ORIGIN must be CORS-allowed.
-    admin: adminConfig(env, allowedOrigins),
+    admin,
   };
 }
