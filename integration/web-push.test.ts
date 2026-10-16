@@ -515,6 +515,80 @@ test('isolated PostgreSQL: Web Push account, subscription and dispatch boundarie
     );
 
     await t.test(
+      'finish fences the lease on the database clock even when the app clock is far off',
+      async () => {
+        const repository = app.get(PushDispatchRepository);
+        // Runs one call with the app (Node) clock shifted against PostgreSQL.
+        const shifted = async <T>(ms: number, call: () => Promise<T>) => {
+          const Real = Date;
+          class Shifted extends Real {
+            constructor(...args: unknown[]) {
+              if (args.length === 0) super(Real.now() + ms);
+              else super(...(args as [string | number | Date]));
+            }
+            static now() {
+              return Real.now() + ms;
+            }
+          }
+          globalThis.Date = Shifted as DateConstructor;
+          try {
+            return await call();
+          } finally {
+            globalThis.Date = Real;
+          }
+        };
+        const claimFor = async (notice: string) => {
+          while (await repository.fanOutOne()) {
+            /* Drain database-only fanout. */
+          }
+          const job = await repository.claim();
+          assert.ok(job);
+          assert.equal(job.notificationId, notice);
+          return job;
+        };
+        const statusOf = async (id: string) =>
+          (
+            await admin.query(
+              'SELECT status,"leaseToken" FROM woori.notification_deliveries WHERE id=$1',
+              [id]
+            )
+          ).rows[0];
+        // App clock 2 minutes ahead: the 60 s lease PostgreSQL granted is still
+        // valid on its own clock, so the result is recorded (no re-send later).
+        const ahead = await claimFor(await comment(member));
+        await shifted(120_000, () => repository.finish(ahead, 'accepted'));
+        assert.deepEqual(await statusOf(ahead.id), {
+          status: 'DONE',
+          leaseToken: null,
+        });
+        // A lease that expired on the database clock stays refused even when
+        // the app clock runs 2 minutes behind.
+        const expired = await claimFor(await comment(member));
+        await admin.query(
+          'UPDATE woori.notification_deliveries SET "leaseUntil"=now()-interval \'1 second\' WHERE id=$1',
+          [expired.id]
+        );
+        await shifted(-120_000, () => repository.finish(expired, 'accepted'));
+        assert.equal((await statusOf(expired.id)).status, 'RUNNING');
+        // Retire it before the next claim (an expired lease is reclaimable).
+        const retire = (id: string) =>
+          admin.query(
+            'UPDATE woori.notification_deliveries SET status=\'DONE\',"resultCode"=\'fixture-cleanup\',"leaseToken"=NULL,"leaseUntil"=NULL WHERE id=$1',
+            [id]
+          );
+        await retire(expired.id);
+        // A retry written while ahead is due on the app clock that claims it.
+        const retry = await claimFor(await comment(member));
+        await shifted(90_000, () =>
+          repository.finish(retry, 'retryable-failure', { retryAfterMs: 1000 })
+        );
+        assert.equal((await statusOf(retry.id)).status, 'PENDING');
+        // Retire the fixture so later drains never send it.
+        await retire(retry.id);
+      }
+    );
+
+    await t.test(
       'quiet time holds deliveries and current read/settings are rechecked on release',
       async () => {
         const now = new Date();
@@ -537,9 +611,10 @@ test('isolated PostgreSQL: Web Push account, subscription and dispatch boundarie
           .send({ throughSequence: 1 })
           .expect(200);
         await preference(owner, { quietEnabled: false });
+        // Due on the dispatcher's clock (the app clock), not PostgreSQL now().
         await admin.query(
-          'UPDATE woori.notification_deliveries SET "nextAttemptAt"=now() WHERE "notificationId"=$1',
-          [notice]
+          'UPDATE woori.notification_deliveries SET "nextAttemptAt"=$2 WHERE "notificationId"=$1',
+          [notice, new Date()]
         );
         await drainWithoutSend(notice);
       }
@@ -588,9 +663,10 @@ test('isolated PostgreSQL: Web Push account, subscription and dispatch boundarie
         assert.ok(retry.attempts > 0);
         assert.ok(new Date(retry.nextAttemptAt).getTime() > Date.now());
         sendError = undefined;
+        // Due on the dispatcher's clock (the app clock), not PostgreSQL now().
         await admin.query(
-          'UPDATE woori.notification_deliveries SET "nextAttemptAt"=now() WHERE "notificationId"=$1',
-          [notice]
+          'UPDATE woori.notification_deliveries SET "nextAttemptAt"=$2 WHERE "notificationId"=$1',
+          [notice, new Date()]
         );
         await dispatch();
         assert.equal(

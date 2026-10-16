@@ -237,10 +237,16 @@ test('isolated PostgreSQL: account credential changes and email ownership', asyn
           reset = createToken();
         await app
           .get(AuthRepository)
-          .createEmailToken(userId, hashToken(verify), account.email);
+          .createEmailToken(userId, hashToken(verify), account.email, {
+            id: randomUUID(),
+            token: verify,
+          });
         await app
           .get(RecoveryRepository)
-          .issue(userId, account.displayName, account.email, hashToken(reset));
+          .issue(userId, account.displayName, account.email, hashToken(reset), {
+            id: randomUUID(),
+            token: reset,
+          });
         const oldHash = (
           await admin.query(
             'SELECT "passwordHash" FROM woori.users WHERE id=$1',
@@ -272,7 +278,10 @@ test('isolated PostgreSQL: account credential changes and email ownership', asyn
         assert.equal(
           await app
             .get(AuthRepository)
-            .createEmailToken(userId, hashToken(createToken()), account.email),
+            .createEmailToken(userId, hashToken(createToken()), account.email, {
+              id: randomUUID(),
+              token: createToken(),
+            }),
           false
         );
         await assert.rejects(
@@ -338,7 +347,8 @@ test('isolated PostgreSQL: account credential changes and email ownership', asyn
               hashToken(revoked),
               hash,
               account.email,
-              hashToken(createToken())
+              hashToken(createToken()),
+              { id: randomUUID(), token: createToken() }
             )
         );
         await assert.rejects(
@@ -409,11 +419,15 @@ test('isolated PostgreSQL: account credential changes and email ownership', asyn
             hashToken(cookie),
             currentHash,
             `pending_${suffix}@example.test`,
-            hashToken(pending)
+            hashToken(pending),
+            { id: randomUUID(), token: pending }
           );
         await app
           .get(RecoveryRepository)
-          .issue(peerId, peer.displayName, currentEmail, hashToken(reset));
+          .issue(peerId, peer.displayName, currentEmail, hashToken(reset), {
+            id: randomUUID(),
+            token: reset,
+          });
         await app
           .get(RecoveryRepository)
           .reset(

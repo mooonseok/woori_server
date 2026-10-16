@@ -36,6 +36,7 @@ try {
     WEB_PUSH_VAPID_PRIVATE_KEY: vapid.privateKey,
     WEB_PUSH_VAPID_SUBJECT: 'mailto:integration@example.test',
     PUSH_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
+    MAIL_OUTBOX_KEY: randomBytes(32).toString('base64'),
     WOORI_INTEGRATION_TEST: '1',
     DATABASE_URL: runtime.toString(),
     MIGRATION_DATABASE_URL: owner.toString(),

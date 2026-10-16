@@ -177,9 +177,11 @@ export class AdminGroupsRepository {
           capturedAt: Date | null;
           manualCapturedDate: Date | null;
           createdAt: Date;
+          mediaKind: string;
+          durationMs: number | null;
         }[]
       >(
-        Prisma.sql`SELECT p.id,p.status::text AS status,u.id AS "uploaderId",u."displayName" AS "uploaderDisplayName",p.width,p.height,p.bytes,p."capturedAt",p."manualCapturedDate",p."createdAt" FROM woori.photos p JOIN woori.users u ON u.id=p."uploaderId" WHERE p."albumId"=${albumId}::uuid AND p."groupId"=${groupId}::uuid ${after} ORDER BY p."createdAt" DESC,p.id DESC LIMIT ${limit + 1}`
+        Prisma.sql`SELECT p.id,p.status::text AS status,u.id AS "uploaderId",u."displayName" AS "uploaderDisplayName",p.width,p.height,p.bytes,p."capturedAt",p."manualCapturedDate",p."createdAt",p."mediaKind"::text AS "mediaKind",p."durationMs" FROM woori.photos p JOIN woori.users u ON u.id=p."uploaderId" WHERE p."albumId"=${albumId}::uuid AND p."groupId"=${groupId}::uuid ${after} ORDER BY p."createdAt" DESC,p.id DESC LIMIT ${limit + 1}`
       );
       await writeAdminAudit(tx, {
         adminId,
@@ -194,6 +196,9 @@ export class AdminGroupsRepository {
         items: rows.map((row) => ({
           id: row.id,
           status: row.status,
+          // W07-3: a VIDEO's bytes are its transcoded MP4 plus posters.
+          mediaKind: row.mediaKind,
+          durationMs: row.durationMs,
           uploader: {
             id: row.uploaderId,
             displayName: row.uploaderDisplayName,

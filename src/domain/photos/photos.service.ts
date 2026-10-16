@@ -1,11 +1,15 @@
 import {
+  BadRequestException,
   HttpException,
   Injectable,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { MediaStorageService } from '../../common/media/media-storage.service';
+import {
+  MAX_UPLOAD_BYTES,
+  MediaStorageService,
+} from '../../common/media/media-storage.service';
 import { AuthRateLimitService } from '../auth/auth-rate-limit.service';
-import { PhotosRepository } from './photos.repository';
+import { isVideoUpload, PhotosRepository } from './photos.repository';
 import type { UploadPhotoDto } from './dto/photo.dto';
 @Injectable()
 export class PhotosService {
@@ -36,6 +40,12 @@ export class PhotosService {
     userId: string,
     dto: UploadPhotoDto
   ) {
+    // Same precedence as the former DTO bound: size errors before lookups.
+    if (!isVideoUpload(dto.contentType) && dto.bytes > MAX_UPLOAD_BYTES)
+      throw new BadRequestException({
+        code: 'INVALID_PHOTO_FILE',
+        message: '사진은 30MB 이하만 올릴 수 있어요.',
+      });
     await this.repository.assertAlbum(groupId, albumId, userId);
     this.requireStorage();
     await this.rateLimit.consume(`media-upload:${userId}`, 120);
@@ -49,10 +59,15 @@ export class PhotosService {
     try {
       return {
         photoId: photo.id,
+        // The signed PUT expires with the reservation (videos: longer window).
         ...(await this.storage.presign(
           photo.stagingKey!,
           dto.contentType,
-          dto.bytes
+          dto.bytes,
+          Math.max(
+            60,
+            Math.floor((photo.uploadExpiresAt!.getTime() - Date.now()) / 1000)
+          )
         )),
       };
     } catch (error) {
@@ -152,6 +167,40 @@ export class PhotosService {
           .catch(() => undefined);
       throw error;
     }
+  }
+  // Signed short-lived R2 URL for the transcoded MP4: inline for playback
+  // (R2 serves Range requests) or attachment for download. Membership and
+  // visibility are checked first; signing performs no I/O.
+  async video(
+    groupId: string,
+    albumId: string,
+    photoId: string,
+    userId: string,
+    purpose: 'play' | 'download'
+  ) {
+    const variant = await this.repository.videoVariant(
+      groupId,
+      albumId,
+      photoId,
+      userId
+    );
+    this.requireStorage();
+    const signed = await this.storage.signedVideoUrl(
+      variant.objectKey,
+      purpose === 'download'
+        ? { download: true, filename: `woori-${photoId}.mp4` }
+        : { download: false }
+    );
+    return {
+      url: signed.url,
+      expiresAt: signed.expiresAt,
+      purpose,
+      mime: variant.mime,
+      bytes: Number(variant.bytes),
+      width: variant.width,
+      height: variant.height,
+      durationMs: variant.durationMs,
+    };
   }
   remove(groupId: string, albumId: string, photoId: string, userId: string) {
     return this.repository.remove(groupId, albumId, photoId, userId);

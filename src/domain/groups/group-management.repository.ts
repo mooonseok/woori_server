@@ -220,7 +220,7 @@ export class GroupManagementRepository {
       // The worker resumes bounded photo/album cleanup from this state after crashes.
       await tx.group.update({
         where: { id: groupId },
-        data: { status: 'DELETING' },
+        data: { status: 'DELETING', deletionRequestedAt: new Date() },
       });
       await tx.invitation.updateMany({
         where: { groupId, revokedAt: null },

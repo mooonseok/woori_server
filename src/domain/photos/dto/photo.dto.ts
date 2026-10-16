@@ -16,10 +16,19 @@ export class AlbumParamsDto {
 export class PhotoParamsDto extends AlbumParamsDto {
   @IsUUID() photoId!: string;
 }
+export const UPLOAD_CONTENT_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  // W07-3: transcoded by the worker; at most 200 MB and 60 s (server-checked).
+  'video/mp4',
+  'video/quicktime',
+] as const;
 export class UploadPhotoDto {
   @IsString() @Length(1, 255) filename!: string;
-  @IsIn(['image/jpeg', 'image/png', 'image/webp']) contentType!: string;
-  @IsInt() @Min(1) @Max(30 * 1024 * 1024) bytes!: number;
+  @IsIn(UPLOAD_CONTENT_TYPES) contentType!: string;
+  // Images stay <= 30 MiB (checked by the service before any lookup).
+  @IsInt() @Min(1) @Max(200 * 1024 * 1024) bytes!: number;
 }
 export class PhotoListDto {
   @IsOptional() @IsUUID() cursor?: string;
@@ -28,6 +37,12 @@ export class PhotoListDto {
 export class PhotoContentDto {
   @IsOptional() @IsIn(['original', 'display', 'thumbnail']) variant:
     'original' | 'display' | 'thumbnail' = 'display';
+}
+
+export class VideoAccessDto {
+  // play: inline for the viewer (Range requests); download: attachment.
+  @IsOptional() @IsIn(['play', 'download']) purpose: 'play' | 'download' =
+    'play';
 }
 
 export class UploadListDto {

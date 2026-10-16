@@ -1,4 +1,5 @@
 import { adminConfig, type AdminConfig } from './admin.config';
+import { assertProductionConfig } from './production.config';
 export interface RuntimeConfig {
   port: number;
   trustedProxyHops: number;
@@ -13,6 +14,8 @@ export interface RuntimeConfig {
 export function runtimeConfig(
   env: NodeJS.ProcessEnv = process.env
 ): RuntimeConfig {
+  // NODE_ENV=production: fail fast naming every missing/unsafe setting.
+  assertProductionConfig(env, 'api');
   const port = Number(env.PORT ?? 3001);
   if (!Number.isInteger(port) || port < 1 || port > 65535)
     throw new Error('PORT must be between 1 and 65535');

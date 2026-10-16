@@ -24,9 +24,19 @@ test('notification inputs bound query and observed read sequence without accepti
     );
   for (const value of [
     { notifications: [] },
+    // OpenAPI 0.20.0: a bundle's observed sequence may exceed 1, but it is
+    // still a positive 32-bit integer (allocation is checked server-side).
     {
       notifications: [
-        { id: '315097d9-f1a4-4202-ad40-455124a80cc2', throughSequence: 2 },
+        { id: '315097d9-f1a4-4202-ad40-455124a80cc2', throughSequence: 0 },
+      ],
+    },
+    {
+      notifications: [
+        {
+          id: '315097d9-f1a4-4202-ad40-455124a80cc2',
+          throughSequence: 2147483648,
+        },
       ],
     },
     {

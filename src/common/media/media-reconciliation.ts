@@ -157,7 +157,9 @@ export class ReconciliationStorage implements ReconciliationObjects {
   }
   async head(key: string) {
     if (
-      !/^(photos|staging)\/[a-zA-Z0-9/_-]+(?:\.(jpg|png|webp))?$/.test(key) ||
+      !/^(photos|staging)\/[a-zA-Z0-9/_-]+(?:\.(jpg|png|webp|mp4))?$/.test(
+        key
+      ) ||
       key.includes('//') ||
       key.length > 240
     )

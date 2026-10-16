@@ -1,0 +1,8 @@
+[
+  {
+    "AllowedOrigins": ["https://woori.stream"],
+    "AllowedMethods": ["PUT"],
+    "AllowedHeaders": ["content-type"],
+    "MaxAgeSeconds": 3600
+  }
+]

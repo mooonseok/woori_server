@@ -21,6 +21,7 @@ import {
   UploadPhotoDto,
   UploadListDto,
   EmptyPhotoMutationDto,
+  VideoAccessDto,
 } from './dto/photo.dto';
 import { PhotosService } from './photos.service';
 @Controller('v1/groups/:groupId/albums/:albumId')
@@ -78,6 +79,16 @@ export class PhotosController {
     @CurrentUser() u: SessionUser
   ) {
     return this.service.remove(p.groupId, p.albumId, p.photoId, u.id);
+  }
+  @Get('photos/:photoId/video') async video(
+    @Param() p: PhotoParamsDto,
+    @Query() q: VideoAccessDto,
+    @CurrentUser() u: SessionUser,
+    @Res({ passthrough: true }) response: Response
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('Vary', 'Cookie');
+    return this.service.video(p.groupId, p.albumId, p.photoId, u.id, q.purpose);
   }
   @Get('photos/:photoId/content') async content(
     @Param() p: PhotoParamsDto,

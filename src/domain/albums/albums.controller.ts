@@ -8,10 +8,12 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { CreateAlbumDto } from './dto/create-album.dto';
 import { AlbumsService } from './albums.service';
 import { GroupParamsDto } from './dto/group-params.dto';
+import { AlbumListQueryDto } from './dto/album-list.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { SessionUser } from '../../common/dto/session-user.dto';
 @Controller('v1/groups/:groupId/albums')
@@ -26,9 +28,15 @@ export class AlbumsController {
   }
   @Get() list(
     @Param() params: GroupParamsDto,
+    @Query() query: AlbumListQueryDto,
     @CurrentUser() user: SessionUser
   ) {
-    return this.service.list(params.groupId, user.id);
+    return this.service.list(
+      params.groupId,
+      user.id,
+      query.limit,
+      query.cursor
+    );
   }
   @Patch(':albumId') rename(
     @Param() params: AlbumParamsDto,

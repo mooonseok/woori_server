@@ -7,7 +7,7 @@ import {
 import { MediaStorageService } from '../../common/media/media-storage.service';
 import { Public } from '../../common/decorators/public.decorator';
 import { PrismaService } from '../../common/modules/prisma/prisma.service';
-import { developmentMailDirectory } from '../../common/configurations/development-mail';
+import { mailConfigured } from '../../common/mail/mail-config';
 @Controller()
 export class HealthController {
   constructor(
@@ -32,13 +32,8 @@ export class HealthController {
     try {
       // Checks the schema and restricted runtime role as well as connectivity.
       await this.prisma.client.user.findFirst({ select: { id: true } });
-      const mailConfigured =
-        developmentMailDirectory() ||
-        (process.env.MAIL_MODE === 'resend' &&
-          process.env.RESEND_API_KEY &&
-          process.env.MAIL_FROM);
-      if (!mailConfigured || !process.env.WEB_ORIGIN)
-        throw new Error('Mail not configured');
+      // Mail transport, link origin and the outbox payload key (W07-4).
+      if (!mailConfigured()) throw new Error('Mail not configured');
       return {
         status: 'ready',
         capabilities: {

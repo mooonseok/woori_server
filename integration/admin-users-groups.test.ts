@@ -727,7 +727,10 @@ test('isolated PostgreSQL: admin member and group management, suspension, deleti
         assert.equal(
           await app
             .get(RecoveryRepository)
-            .issue(m1.id, m1.displayName, m1.email, hashToken(reset)),
+            .issue(m1.id, m1.displayName, m1.email, hashToken(reset), {
+              id: randomUUID(),
+              token: reset,
+            }),
           true
         );
         const confirmed = await memberMutation(
@@ -1092,17 +1095,22 @@ test('isolated PostgreSQL: admin member and group management, suspension, deleti
             `/v1/admin/groups/${groupId}/albums/${albumId}/photos?limit=2${cursor ? `&cursor=${cursor}` : ''}`
           ).expect(200);
           for (const item of page.body.items) {
+            // Exact shape; OpenAPI 0.22.0 added mediaKind/durationMs (W07-3).
             assert.deepEqual(Object.keys(item).sort(), [
               'bytes',
               'createdAt',
+              'durationMs',
               'effectiveDate',
               'height',
               'id',
+              'mediaKind',
               'status',
               'uploader',
               'width',
             ]);
             assert.match(item.effectiveDate, /^\d{4}-\d{2}-\d{2}$/);
+            assert.equal(item.mediaKind, 'PHOTO');
+            assert.equal(item.durationMs, null);
             photos.push(item.id);
           }
           cursor = page.body.nextCursor;
@@ -1169,11 +1177,43 @@ test('isolated PostgreSQL: admin member and group management, suspension, deleti
           'outbox',
           'photoProcessing',
           'push',
+          'queues',
           'reports',
           'storage',
           'users',
+          'workers',
         ]);
-        assert.equal(metrics.body.mail, null);
+        // OpenAPI 0.23.0 (W07-4): mail outbox counts replace the null placeholder.
+        assert.deepEqual(Object.keys(metrics.body.mail).sort(), [
+          'failed24h',
+          'pending',
+          'sent24h',
+        ]);
+        for (const value of Object.values(metrics.body.mail))
+          assert.ok(Number.isInteger(value) && (value as number) >= 0);
+        assert.deepEqual(Object.keys(metrics.body.queues).sort(), [
+          'groupCleanup',
+          'mailOutbox',
+          'mediaCleanup',
+          'photoProcessing',
+          'pushDeliveries',
+          'pushOutbox',
+        ]);
+        for (const lag of Object.values(metrics.body.queues) as {
+          due: number;
+          oldestDueSeconds: number | null;
+        }[]) {
+          assert.deepEqual(Object.keys(lag).sort(), [
+            'due',
+            'oldestDueSeconds',
+          ]);
+          assert.ok(Number.isInteger(lag.due) && lag.due >= 0);
+        }
+        assert.deepEqual(Object.keys(metrics.body.workers).sort(), [
+          'healthy',
+          'instances',
+          'staleAfterSeconds',
+        ]);
         assert.deepEqual(Object.keys(metrics.body.users).sort(), [
           'active',
           'deleted',

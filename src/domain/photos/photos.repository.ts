@@ -12,7 +12,25 @@ import { Prisma, type Photo } from '@prisma/client';
 import { PrismaService } from '../../common/modules/prisma/prisma.service';
 import { notBlockedBy, visiblePhotoWhere } from '../blocks/block-visibility';
 import type { MediaVariant } from '../../common/media/media-storage.service';
+import {
+  uploadWindowMs,
+  VIDEO_MIMES,
+} from '../../common/media/video-transcode';
 const RESERVATION = 90n * 1024n * 1024n;
+// A video reserves the bounded transcode output (<=150 MB) plus its posters.
+const VIDEO_RESERVATION = 200n * 1024n * 1024n;
+// Transcoding a minute of video takes far longer than an image: a longer lease.
+// Above the sum of the per-step tool timeouts (20 + 240 + 20 + 30 s) plus a
+// 200 MB download and the uploads.
+const VIDEO_LEASE_MS = 15 * 60_000;
+export const isVideoUpload = (mime: string) =>
+  (VIDEO_MIMES as readonly string[]).includes(mime);
+const variantKind: Record<MediaVariant['kind'], string> = {
+  ORIGINAL: 'original',
+  DISPLAY: 'preview',
+  THUMBNAIL: 'thumbnail',
+  VIDEO: 'video',
+};
 // Every MediaPhoto response names its uploader (withdrawn accounts already
 // read '탈퇴한 회원').
 export const photoUploader = {
@@ -30,6 +48,8 @@ export const photoSummary = {
   captureDateSource: true,
   createdAt: true,
   status: true,
+  mediaKind: true,
+  durationMs: true,
   uploader: photoUploader,
 } satisfies Prisma.PhotoSelect;
 export function notFound(): never {
@@ -190,8 +210,10 @@ export class PhotosRepository {
         where: active,
         _sum: { reservedBytes: true },
       });
+      const video = isVideoUpload(mime);
+      const reservation = video ? VIDEO_RESERVATION : RESERVATION;
       if (
-        group.usedBytes + (reserved._sum.reservedBytes ?? 0n) + RESERVATION >
+        group.usedBytes + (reserved._sum.reservedBytes ?? 0n) + reservation >
         group.quotaBytes
       )
         throw new ConflictException({
@@ -204,10 +226,13 @@ export class PhotosRepository {
           albumId,
           uploaderId: userId,
           stagingKey: `staging/${randomUUID()}`,
+          mediaKind: video ? 'VIDEO' : 'PHOTO',
           uploadMime: mime,
           uploadBytes: BigInt(bytes),
-          reservedBytes: RESERVATION,
-          uploadExpiresAt: new Date(now.getTime() + 10 * 60_000),
+          reservedBytes: reservation,
+          uploadExpiresAt: new Date(
+            now.getTime() + uploadWindowMs(mime, bytes)
+          ),
         },
       });
     });
@@ -232,6 +257,12 @@ export class PhotosRepository {
       });
       if (!photo) notFound();
       if (photo.status === 'READY') return { ready: true as const, photo };
+      // Transcoding never runs inside an API request: videos use the queue.
+      if (photo.mediaKind === 'VIDEO')
+        throw new ConflictException({
+          code: 'VIDEO_QUEUE_REQUIRED',
+          message: '동영상은 처리 요청(process)으로 올려 주세요.',
+        });
       const now = new Date();
       if (photo.processingQueuedAt)
         throw new ConflictException({ code: 'PHOTO_PROCESSING' });
@@ -302,12 +333,22 @@ export class PhotosRepository {
           code: 'PHOTO_TOO_LARGE',
           message: '처리된 사진이 너무 커요.',
         });
-      const original = variants.find((v) => v.kind === 'ORIGINAL');
-      if (!original) throw new Error('Original variant missing');
+      // Photos keep their ORIGINAL; videos keep only the transcoded VIDEO
+      // (W07-3: the uploaded original is discarded) plus the posters.
+      const video = photo.mediaKind === 'VIDEO';
+      const original = variants.find(
+        (v) => v.kind === (video ? 'VIDEO' : 'ORIGINAL')
+      );
+      if (
+        !original ||
+        variants.some((v) => v.kind === (video ? 'ORIGINAL' : 'VIDEO')) ||
+        (video && !original.durationMs)
+      )
+        throw new Error('Primary variant missing');
       await tx.photoVariant.createMany({
         data: variants.map((v) => ({
           photoId,
-          kind: v.kind === 'DISPLAY' ? 'preview' : v.kind.toLowerCase(),
+          kind: variantKind[v.kind],
           objectKey: v.objectKey,
           mime: v.mime,
           width: v.width,
@@ -325,6 +366,7 @@ export class PhotosRepository {
           captureMetadataCheckedAt: new Date(),
           width: original.width,
           height: original.height,
+          durationMs: video ? original.durationMs : null,
           reservedBytes: 0n,
           processingToken: null,
           processingUntil: null,
@@ -502,10 +544,24 @@ export class PhotosRepository {
       nextCursor: hasNext ? rows.at(-1)!.id : null,
     };
   }
-  async claimQueued() {
+  // onFailed receives each job this call fails terminally before processing
+  // (revoked access, inactive uploader, deadline, attempts) so the worker can
+  // remove a video's staging original right away.
+  // options.videos=false: a worker without working ffmpeg (or with video
+  // processing paused) leaves video jobs to another worker instead of failing them.
+  async claimQueued(
+    onFailed?: (photo: {
+      mediaKind: string;
+      stagingKey: string | null;
+    }) => void,
+    options: { videos?: boolean } = {}
+  ) {
     const now = new Date();
+    const kinds =
+      options.videos === false ? { mediaKind: 'PHOTO' as const } : {};
     const candidates = await this.prisma.client.photo.findMany({
       where: {
+        ...kinds,
         status: 'PROCESSING',
         deletedAt: null,
         processingQueuedAt: { not: null },
@@ -524,6 +580,7 @@ export class PhotosRepository {
         if (!groups.length) return null;
         const photo = await tx.photo.findFirst({
           where: {
+            ...kinds,
             id: candidate.id,
             status: 'PROCESSING',
             deletedAt: null,
@@ -562,30 +619,56 @@ export class PhotosRepository {
               processingErrorCode: error,
             },
           });
-          return null;
+          return { failed: true as const, photo };
         }
         const token = randomUUID();
         const claimed = await tx.photo.update({
           where: { id: photo.id },
           data: {
             processingToken: token,
-            processingUntil: new Date(now.getTime() + 5 * 60_000),
+            processingUntil: new Date(
+              now.getTime() +
+                (photo.mediaKind === 'VIDEO' ? VIDEO_LEASE_MS : 5 * 60_000)
+            ),
             processingAttempts: { increment: 1 },
           },
         });
-        return { photo: claimed, token };
+        return { failed: false as const, photo: claimed, token };
       });
-      if (result) return result;
+      if (result?.failed) {
+        onFailed?.(result.photo);
+        continue;
+      }
+      if (result) return { photo: result.photo, token: result.token };
     }
     return null;
   }
-  async failQueued(photoId: string, token: string, invalid: boolean) {
+  async failQueued(
+    photoId: string,
+    token: string,
+    invalid: boolean,
+    errorCode?: string
+  ) {
+    return (await this.failQueuedResult(photoId, token, invalid, errorCode))
+      .owned;
+  }
+  // owned: this attempt still held the lease; terminal: the job is now FAILED
+  // (the staging original can then be removed).
+  async failQueuedResult(
+    photoId: string,
+    token: string,
+    invalid: boolean,
+    errorCode?: string,
+    // refundAttempt + immediate: the worker stopped the attempt itself
+    // (shutdown drain) and hands it back at once without spending an attempt.
+    options: { refundAttempt?: boolean; immediate?: boolean } = {}
+  ): Promise<{ owned: boolean; terminal: boolean }> {
     return this.prisma.client.$transaction(async (tx) => {
       const initial = await tx.photo.findUnique({
         where: { id: photoId },
         select: { groupId: true },
       });
-      if (!initial) return false;
+      if (!initial) return { owned: false, terminal: false };
       await tx.$queryRaw`SELECT id FROM woori.groups WHERE id=${initial.groupId}::uuid FOR UPDATE`;
       const now = new Date();
       const photo = await tx.photo.findFirst({
@@ -598,10 +681,11 @@ export class PhotosRepository {
           processingQueuedAt: { not: null },
         },
       });
-      if (!photo) return false;
+      if (!photo) return { owned: false, terminal: false };
+      const refund = options.refundAttempt === true && !invalid;
       const terminal =
         invalid ||
-        photo.processingAttempts >= 5 ||
+        (!refund && photo.processingAttempts >= 5) ||
         !photo.processingDeadlineAt ||
         photo.processingDeadlineAt <= now;
       await tx.photo.update({
@@ -610,19 +694,25 @@ export class PhotosRepository {
           status: terminal ? 'FAILED' : 'PROCESSING',
           processingToken: null,
           processingUntil: null,
-          processingAvailableAt: new Date(
-            now.getTime() +
-              Math.min(15 * 60, 15 * 2 ** (photo.processingAttempts - 1)) * 1000
-          ),
+          ...(refund && !terminal
+            ? { processingAttempts: Math.max(0, photo.processingAttempts - 1) }
+            : {}),
+          processingAvailableAt: options.immediate
+            ? now
+            : new Date(
+                now.getTime() +
+                  Math.min(15 * 60, 15 * 2 ** (photo.processingAttempts - 1)) *
+                    1000
+              ),
           processingErrorCode: terminal
             ? invalid
-              ? 'INVALID_PHOTO_FILE'
+              ? (errorCode ?? 'INVALID_PHOTO_FILE')
               : 'PHOTO_PROCESSING_FAILED'
             : null,
           ...(terminal ? { reservedBytes: 0n } : {}),
         },
       });
-      return true;
+      return { owned: true, terminal };
     });
   }
   async content(
@@ -652,6 +742,42 @@ export class PhotosRepository {
     const variant = photo?.variants[0];
     if (!variant) notFound();
     return variant;
+  }
+  // The transcoded MP4 of a READY video the viewer can see (same visibility as
+  // content). Photos have no video variant: 404.
+  async videoVariant(
+    groupId: string,
+    albumId: string,
+    photoId: string,
+    userId: string
+  ) {
+    const photo = await this.prisma.client.photo.findFirst({
+      where: {
+        id: photoId,
+        groupId,
+        albumId,
+        mediaKind: 'VIDEO',
+        ...visiblePhotoWhere(userId),
+        group: memberScope(userId),
+        album: { deletedAt: null },
+      },
+      select: {
+        durationMs: true,
+        variants: {
+          where: { kind: 'video' },
+          select: {
+            objectKey: true,
+            mime: true,
+            bytes: true,
+            width: true,
+            height: true,
+          },
+        },
+      },
+    });
+    const variant = photo?.variants[0];
+    if (!photo || !variant || !photo.durationMs) notFound();
+    return { ...variant, durationMs: photo.durationMs };
   }
 
   async remove(
@@ -684,6 +810,18 @@ export class PhotosRepository {
       if (photo.deletedAt) return;
       await markPhotosDeleted(tx, groupId, { albumId, id: photoId });
     });
+  }
+  // Keys an attempt wrote that no variant references (it lost its lease to a
+  // newer attempt, or publication failed). A lost commit response that did
+  // publish them leaves them referenced, so they are never returned.
+  async unreferencedKeys(photoId: string, keys: string[]) {
+    if (!keys.length) return [];
+    const referenced = await this.prisma.client.photoVariant.findMany({
+      where: { photoId, objectKey: { in: keys } },
+      select: { objectKey: true },
+    });
+    const used = new Set(referenced.map((variant) => variant.objectKey));
+    return keys.filter((key) => !used.has(key));
   }
   async queueDeletedAttempt(photoId: string, keys: string[]) {
     // If deletion won publication, a delayed process may have written after the
@@ -737,6 +875,8 @@ export class PhotosRepository {
       manualCapturedDate?: Date | null;
       createdAt: Date;
       status: string;
+      mediaKind: string;
+      durationMs: number | null;
       uploader: { id: string; displayName: string };
     },
     canDelete = true
@@ -745,6 +885,9 @@ export class PhotosRepository {
       id: photo.id,
       groupId: photo.groupId,
       albumId: photo.albumId,
+      // W07-3: PHOTO or VIDEO (poster via content variants, stream via /video).
+      mediaKind: photo.mediaKind,
+      durationMs: photo.durationMs,
       width: photo.width,
       height: photo.height,
       capturedAt: photo.capturedAt,

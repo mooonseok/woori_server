@@ -47,6 +47,59 @@ export class AdminContentRepository {
       variant,
     };
   }
+  // The transcoded MP4 of a viewable video (same READY/DELETING-before-cleanup
+  // rule as the poster). The uploaded original is never stored.
+  async viewableVideo(photoId: string) {
+    const client = this.prisma.client;
+    const photo = await client.photo.findUnique({
+      where: { id: photoId },
+      select: {
+        id: true,
+        groupId: true,
+        status: true,
+        deletedAt: true,
+        mediaKind: true,
+        durationMs: true,
+        variants: {
+          where: { kind: 'video' },
+          select: { objectKey: true, mime: true, bytes: true },
+        },
+      },
+    });
+    const variant = photo?.variants[0];
+    if (!photo || photo.mediaKind !== 'VIDEO' || !variant) photoNotFound();
+    let viewable = photo.status === 'READY' && !photo.deletedAt;
+    if (!viewable && photo.status === 'DELETING') {
+      const job = await client.mediaCleanupJob.findUnique({
+        where: { photoId },
+        select: { completedAt: true },
+      });
+      viewable = Boolean(job && !job.completedAt);
+    }
+    if (!viewable) photoNotFound();
+    return {
+      id: photo.id,
+      groupId: photo.groupId,
+      durationMs: photo.durationMs,
+      variant,
+    };
+  }
+  async auditVideoView(
+    adminId: string,
+    photo: { id: string; groupId: string },
+    reason: string
+  ) {
+    await this.prisma.client.$transaction((tx) =>
+      writeAdminAudit(tx, {
+        adminId,
+        action: 'ADMIN_VIDEO_VIEWED',
+        targetType: 'PHOTO',
+        targetId: photo.id,
+        reason,
+        metadata: { photoId: photo.id, groupId: photo.groupId },
+      })
+    );
+  }
   async auditPhotoView(
     adminId: string,
     photo: { id: string; groupId: string },

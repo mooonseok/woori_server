@@ -44,6 +44,28 @@ export class AdminContentService {
       throw error;
     }
   }
+  // Audited before the URL exists: a short-lived signed inline URL to the
+  // transcoded MP4 (Range playback), never the original (it is not stored).
+  async viewVideo(adminId: string, photoId: string, reason: string) {
+    await this.consumeView(adminId);
+    const video = await this.repository.viewableVideo(photoId);
+    if (!this.storage.enabled())
+      throw new ServiceUnavailableException({
+        code: 'MEDIA_NOT_CONFIGURED',
+        message: '사진 저장소가 아직 준비되지 않았어요.',
+      });
+    await this.repository.auditVideoView(adminId, video, reason);
+    const signed = await this.storage.signedVideoUrl(video.variant.objectKey, {
+      download: false,
+    });
+    return {
+      url: signed.url,
+      expiresAt: signed.expiresAt,
+      mime: video.variant.mime,
+      bytes: Number(video.variant.bytes),
+      durationMs: video.durationMs,
+    };
+  }
   async viewComment(adminId: string, commentId: string, reason: string) {
     await this.consumeView(adminId);
     return this.repository.viewComment(adminId, commentId, reason);

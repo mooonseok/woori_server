@@ -378,15 +378,16 @@ test('isolated PostgreSQL: read-only notices and own member inquiries', async (t
         assert.equal(missing.body.code, 'NOTICE_NOT_FOUND');
       }
       await writer.agent.get('/v1/notices/not-a-uuid').expect(400);
-      // A notice becomes visible exactly when its publication time passes.
+      // A notice becomes visible exactly when its publication time passes (on
+      // the app clock, the clock that writes and compares publishedAt).
       await admin.query(
-        'UPDATE woori.notices SET "publishedAt"=now() - interval \'1 second\' WHERE id=$1',
-        [hidden.future]
+        'UPDATE woori.notices SET "publishedAt"=$2 WHERE id=$1',
+        [hidden.future, new Date(Date.now() - 1000)]
       );
       await writer.agent.get(`/v1/notices/${hidden.future}`).expect(200);
       await admin.query(
-        'UPDATE woori.notices SET "publishedAt"=now() + interval \'1 day\' WHERE id=$1',
-        [hidden.future]
+        'UPDATE woori.notices SET "publishedAt"=$2 WHERE id=$1',
+        [hidden.future, new Date(Date.now() + 86_400_000)]
       );
       await writer.agent.get(`/v1/notices/${hidden.future}`).expect(404);
     });

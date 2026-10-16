@@ -7,6 +7,11 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/modules/prisma/prisma.service';
 import { notBlockedBySql } from '../blocks/block-visibility';
+import {
+  isUnread,
+  navigationFor,
+  readThroughAfter,
+} from './notification-bundles';
 import type {
   ObservedNotificationDto,
   UpdateGroupPreferenceDto,
@@ -43,22 +48,33 @@ export function validateQuietPreferences(p: {
 // and a target photo whose uploader the recipient blocked is invisible (the same
 // predicate as MediaPhoto reads). The recipient must be ACTIVE; an actor follows
 // the group roster (ACTIVE or SUSPENDED stays visible, withdrawn is hidden).
+// W07 bundles: one row per notification aggregating only its VISIBLE activities
+// (PHOTOS: each activity's own photo; REACTION: reactors whose reaction still
+// exists). count = visible photos (PHOTOS) / reactors (REACTION) / 1; the latest
+// visible activity gives latestSequence, latestAt, actor and photo. A bundle with
+// no visible activity left is not returned at all (no stale counts).
 export function visible(userId: string) {
-  return Prisma.sql`SELECT n.id,n.kind,n."groupId",g.name AS "groupName",p."albumId",a.title AS "albumTitle",p.id AS "photoId",p."uploaderId",c.id AS "commentId",n."createdAt",n."readThroughSequence",act.sequence AS "latestSequence",u.id AS "actorId",u."displayName" AS "actorName"
+  return Prisma.sql`SELECT n.id,n.kind,n."groupId",g.name AS "groupName",latest."albumId",latest."albumTitle",latest."photoId",latest."uploaderId",latest."commentId",n."createdAt",n."readThroughSequence",n."lastSequence",latest.sequence AS "latestSequence",latest."createdAt" AS "latestAt",latest.count::int AS count,latest."videoCount"::int AS "videoCount",latest."mediaKind",latest."actorId",latest."actorName"
     FROM woori.notifications n
     JOIN woori.groups g ON g.id=n."groupId" AND g.status='ACTIVE'
     JOIN woori.memberships m ON m."groupId"=g.id AND m."userId"=${userId}::uuid AND m.status='ACTIVE'
     JOIN woori.users recipient ON recipient.id=m."userId" AND recipient.status='ACTIVE'
-    JOIN woori.notification_activities act ON act."notificationId"=n.id AND act.sequence=1
-    JOIN woori.users u ON u.id=act."actorId" AND u.status IN ('ACTIVE','SUSPENDED')
-    LEFT JOIN woori.comments c ON n.kind IN ('COMMENT','PIN') AND c.id=n."targetId" AND c."groupId"=g.id AND c."deletedAt" IS NULL
-    JOIN woori.photos p ON p.id=CASE WHEN n.kind IN ('COMMENT','PIN') THEN c."photoId" ELSE n."targetId" END AND p."groupId"=g.id AND p.status='READY' AND p."deletedAt" IS NULL
-    JOIN woori.albums a ON a.id=p."albumId" AND a."groupId"=g.id AND a."deletedAt" IS NULL
-    WHERE n."recipientId"=${userId}::uuid AND act."actorId"<>${userId}::uuid
-      AND ${notBlockedBySql(userId, Prisma.sql`act."actorId"`)}
-      AND ${notBlockedBySql(userId, Prisma.sql`p."uploaderId"`)}
-      AND n.kind IN ('PHOTOS','COMMENT','PIN','REACTION')
-      AND (n.kind<>'REACTION' OR EXISTS(SELECT 1 FROM woori.reactions r WHERE r."photoId"=p.id AND r."userId"=act."actorId"))`;
+    JOIN LATERAL (
+      SELECT va.*,COUNT(*) OVER () AS count,COUNT(*) FILTER (WHERE va."mediaKind"='VIDEO') OVER () AS "videoCount" FROM (
+        SELECT act.sequence,act."createdAt",u.id AS "actorId",u."displayName" AS "actorName",p.id AS "photoId",p."uploaderId",p."mediaKind"::text AS "mediaKind",a.id AS "albumId",a.title AS "albumTitle",c.id AS "commentId"
+        FROM woori.notification_activities act
+        JOIN woori.users u ON u.id=act."actorId" AND u.status IN ('ACTIVE','SUSPENDED')
+        LEFT JOIN woori.comments c ON n.kind IN ('COMMENT','PIN') AND c.id=n."targetId" AND c."groupId"=g.id AND c."deletedAt" IS NULL
+        JOIN woori.photos p ON p.id=CASE WHEN n.kind IN ('COMMENT','PIN') THEN c."photoId" WHEN n.kind='PHOTOS' THEN COALESCE(act."photoId",n."targetId") ELSE n."targetId" END AND p."groupId"=g.id AND p.status='READY' AND p."deletedAt" IS NULL
+        JOIN woori.albums a ON a.id=p."albumId" AND a."groupId"=g.id AND a."deletedAt" IS NULL
+        WHERE act."notificationId"=n.id AND act."actorId"<>${userId}::uuid
+          AND ${notBlockedBySql(userId, Prisma.sql`act."actorId"`)}
+          AND ${notBlockedBySql(userId, Prisma.sql`p."uploaderId"`)}
+          AND (n.kind<>'REACTION' OR EXISTS(SELECT 1 FROM woori.reactions r WHERE r."photoId"=p.id AND r."userId"=act."actorId"))
+      ) va ORDER BY va.sequence DESC LIMIT 1
+    ) latest ON true
+    WHERE n."recipientId"=${userId}::uuid
+      AND n.kind IN ('PHOTOS','COMMENT','PIN','REACTION')`;
 }
 export type InboxRow = {
   id: string;
@@ -72,10 +88,33 @@ export type InboxRow = {
   commentId: string | null;
   createdAt: Date;
   readThroughSequence: number;
+  lastSequence: number;
   latestSequence: number;
+  latestAt: Date;
+  count: number;
+  // W07-3: videos among the visible media (PHOTOS bundles), and the kind of
+  // photoId (the item's media).
+  videoCount: number;
+  mediaKind: string;
   actorId: string;
   actorName: string;
 };
+// Inbox item: the bundle's latest visible actor/photo plus its visible count.
+// Internal columns (uploaderId, lastSequence) stay server-side.
+export function inboxItem({
+  actorId,
+  actorName,
+  uploaderId: _uploader,
+  lastSequence: _last,
+  ...row
+}: InboxRow) {
+  return {
+    ...row,
+    actor: { id: actorId, displayName: actorName },
+    navigation: navigationFor(row.kind),
+    unread: isUnread(row.readThroughSequence, row.latestSequence),
+  };
+}
 const defaults = {
   enabled: true,
   photos: true,
@@ -104,11 +143,14 @@ export class NotificationsRepository {
           }))
         )
           notificationNotFound();
+        // Newest activity first: a bundle that gains a photo/reactor moves up.
+        // A cursor no longer visible keeps its position by its raw latest
+        // activity time (it still belongs to this recipient, checked above).
         const after = cursor
-          ? Prisma.sql`AND (v."createdAt",v.id)<(SELECT "createdAt",id FROM woori.notifications WHERE id=${cursor}::uuid AND "recipientId"=${userId}::uuid)`
+          ? Prisma.sql`AND (v."latestAt",v.id)<(SELECT COALESCE((SELECT x."latestAt" FROM visible x WHERE x.id=${cursor}::uuid),(SELECT MAX(a."createdAt") FROM woori.notification_activities a WHERE a."notificationId"=${cursor}::uuid),(SELECT "createdAt" FROM woori.notifications WHERE id=${cursor}::uuid)),${cursor}::uuid)`
           : Prisma.empty;
         const rows = await tx.$queryRaw<InboxRow[]>(
-          Prisma.sql`WITH visible AS (${visible(userId)}) SELECT * FROM visible v WHERE true ${after} ORDER BY v."createdAt" DESC,v.id DESC LIMIT ${limit + 1}`
+          Prisma.sql`WITH visible AS (${visible(userId)}) SELECT * FROM visible v WHERE true ${after} ORDER BY v."latestAt" DESC,v.id DESC LIMIT ${limit + 1}`
         );
         const counts = await tx.$queryRaw<{ count: bigint }[]>(
           Prisma.sql`WITH visible AS (${visible(userId)}) SELECT COUNT(*) AS count FROM visible WHERE "readThroughSequence"<"latestSequence"`
@@ -116,14 +158,7 @@ export class NotificationsRepository {
         const more = rows.length > limit;
         if (more) rows.pop();
         return {
-          // The inbox item shape is unchanged; uploaderId is only used by /target.
-          notifications: rows.map(
-            ({ actorId, actorName, uploaderId: _, ...row }) => ({
-              ...row,
-              actor: { id: actorId, displayName: actorName },
-              unread: row.readThroughSequence < row.latestSequence,
-            })
-          ),
+          notifications: rows.map(inboxItem),
           nextCursor: more ? rows.at(-1)!.id : null,
           unreadCount: Number(counts[0].count),
         };
@@ -138,27 +173,83 @@ export class NotificationsRepository {
       Prisma.sql`WITH visible AS (${visible(userId)}) SELECT v.*,pu."displayName" AS "uploaderName" FROM visible v JOIN woori.users pu ON pu.id=v."uploaderId" WHERE v.id=${id}::uuid`
     );
     if (!rows.length) notificationNotFound();
-    const { groupId, albumId, photoId, commentId, latestSequence } = rows[0];
+    const {
+      kind,
+      groupId,
+      albumId,
+      photoId,
+      commentId,
+      latestSequence,
+      mediaKind,
+    } = rows[0];
     // The target photo's uploader lets the viewer report or block from here.
+    // PHOTOS bundles navigate to the album; photoId is its latest visible photo
+    // and mediaKind is that item's kind (never null: a target always has one).
     const uploader = {
       id: rows[0].uploaderId,
       displayName: rows[0].uploaderName,
     };
-    return { groupId, albumId, photoId, commentId, latestSequence, uploader };
+    return {
+      groupId,
+      albumId,
+      photoId,
+      commentId,
+      latestSequence,
+      mediaKind,
+      navigation: navigationFor(kind),
+      uploader,
+    };
   }
   async read(userId: string, items: ObservedNotificationDto[]) {
-    const ids = [...new Set(items.map((i) => i.id))];
+    // Duplicate ids keep the highest observed sequence.
+    const observed = new Map<string, number>();
+    for (const item of items)
+      observed.set(
+        item.id,
+        Math.max(observed.get(item.id) ?? 0, item.throughSequence)
+      );
+    const values = Prisma.join(
+      [...observed].map(
+        ([id, through]) => Prisma.sql`(${id}::uuid,${through}::int)`
+      )
+    );
     return this.prisma.client.$transaction(async (tx) => {
-      // A single statement validates every submitted recipient/target and changes
-      // only the observed sequence. Concurrent new arrivals cannot be consumed.
+      // Every submitted id must be a visible notification of this recipient
+      // (404 otherwise, before any sequence check), and an observed sequence can
+      // never exceed what was allocated (400). One statement then raises only the
+      // observed sequence: activity arriving after the client looked stays unread.
+      const eligible = await tx.$queryRaw<
+        {
+          id: string;
+          through: number;
+          readThroughSequence: number;
+          lastSequence: number;
+        }[]
+      >(Prisma.sql`
+        WITH visible AS (${visible(userId)}), observed(id,through) AS (VALUES ${values})
+        SELECT v.id,o.through,v."readThroughSequence",v."lastSequence" FROM visible v JOIN observed o ON o.id=v.id`);
+      if (eligible.length !== observed.size) notificationNotFound();
+      try {
+        for (const row of eligible)
+          readThroughAfter(
+            row.readThroughSequence,
+            row.through,
+            row.lastSequence
+          );
+      } catch {
+        throw new BadRequestException({
+          code: 'NOTIFICATION_SEQUENCE_INVALID',
+          message: '확인한 알림 순서가 올바르지 않아요. 새로고침해 주세요.',
+        });
+      }
       const changed = await tx.$queryRaw<
         { id: string; readThroughSequence: number }[]
       >(Prisma.sql`
-        WITH visible AS (${visible(userId)}), eligible AS (SELECT id FROM visible WHERE id IN (${Prisma.join(ids.map((id) => Prisma.sql`${id}::uuid`))}))
-        UPDATE woori.notifications n SET "readThroughSequence"=GREATEST(n."readThroughSequence",1)
-        WHERE n.id IN (SELECT id FROM eligible) AND (SELECT COUNT(*) FROM eligible)=${ids.length}
+        WITH observed(id,through) AS (VALUES ${values})
+        UPDATE woori.notifications n SET "readThroughSequence"=GREATEST(n."readThroughSequence",o.through)
+        FROM observed o WHERE n.id=o.id AND n."recipientId"=${userId}::uuid
         RETURNING n.id,n."readThroughSequence"`);
-      if (changed.length !== ids.length) notificationNotFound();
+      if (changed.length !== observed.size) notificationNotFound();
       return changed;
     });
   }
