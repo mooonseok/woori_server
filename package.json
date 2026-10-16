@@ -31,6 +31,8 @@
     "format:check": "prettier --check .",
     "push:keys": "node scripts/generate-web-push-env.mjs",
     "admin:keys": "node scripts/generate-admin-env.mjs",
+    "mail:keys": "node scripts/generate-mail-env.mjs",
+    "r2:backup": "node --env-file-if-exists=.env scripts/r2-backup.mjs",
     "admin:create": "node --env-file-if-exists=.env scripts/admin-accounts.mjs create",
     "admin:reset-mfa": "node --env-file-if-exists=.env scripts/admin-accounts.mjs reset-mfa",
     "admin:disable": "node --env-file-if-exists=.env scripts/admin-accounts.mjs disable",

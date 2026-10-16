@@ -27,7 +27,11 @@ export function inquiryNotFound(): never {
   });
 }
 // Members see only published notices whose publication time has arrived.
-const visibleNotice = Prisma.sql`n.status='PUBLISHED' AND n."publishedAt" IS NOT NULL AND n."publishedAt"<=now()`;
+// publishedAt is written on the app clock (admin publish), so it is compared on
+// the app clock too, never PostgreSQL now(): a few ms of host/DB clock skew must
+// not hide a just-published notice.
+const visibleNotice = (at: Date) =>
+  Prisma.sql`n.status='PUBLISHED' AND n."publishedAt" IS NOT NULL AND n."publishedAt"<=${at}`;
 type NoticeSummaryRow = {
   id: string;
   title: string;
@@ -63,10 +67,12 @@ export class ServiceSupportRepository {
   listNotices(limit: number, cursor?: string) {
     return this.prisma.client.$transaction(
       async (tx) => {
+        // One instant for the anchor and the page, like now() in this snapshot.
+        const at = new Date();
         // A cursor must still be a visible notice; otherwise restart from the top.
         if (cursor) {
           const anchor = await tx.$queryRaw<{ id: string }[]>(
-            Prisma.sql`SELECT n.id FROM woori.notices n WHERE n.id=${cursor}::uuid AND ${visibleNotice}`
+            Prisma.sql`SELECT n.id FROM woori.notices n WHERE n.id=${cursor}::uuid AND ${visibleNotice(at)}`
           );
           if (!anchor.length) noticeNotFound();
         }
@@ -75,7 +81,7 @@ export class ServiceSupportRepository {
           ? Prisma.sql`AND (n."publishedAt",n.id)<(SELECT "publishedAt",id FROM woori.notices WHERE id=${cursor}::uuid)`
           : Prisma.empty;
         const rows = await tx.$queryRaw<NoticeSummaryRow[]>(
-          Prisma.sql`SELECT n.id,n.title,n."publishedAt",n."updatedAt" FROM woori.notices n WHERE ${visibleNotice} ${after} ORDER BY n."publishedAt" DESC,n.id DESC LIMIT ${limit + 1}`
+          Prisma.sql`SELECT n.id,n.title,n."publishedAt",n."updatedAt" FROM woori.notices n WHERE ${visibleNotice(at)} ${after} ORDER BY n."publishedAt" DESC,n.id DESC LIMIT ${limit + 1}`
         );
         return page(rows, limit);
       },
@@ -86,7 +92,7 @@ export class ServiceSupportRepository {
     const rows = await this.prisma.client.$queryRaw<
       (NoticeSummaryRow & { body: string })[]
     >(
-      Prisma.sql`SELECT n.id,n.title,n.body,n."publishedAt",n."updatedAt" FROM woori.notices n WHERE n.id=${noticeId}::uuid AND ${visibleNotice}`
+      Prisma.sql`SELECT n.id,n.title,n.body,n."publishedAt",n."updatedAt" FROM woori.notices n WHERE n.id=${noticeId}::uuid AND ${visibleNotice(new Date())}`
     );
     if (!rows.length) noticeNotFound();
     return rows[0];

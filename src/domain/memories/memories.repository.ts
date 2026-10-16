@@ -13,6 +13,7 @@ import {
 } from './memory-date';
 import type { MemoriesQueryDto } from './dto/memories.dto';
 import { notBlockedBySql } from '../blocks/block-visibility';
+import { effectivePhotoDateSql } from '../photos/photo-date-sql';
 
 type PhotoRow = Omit<
   Prisma.PhotoGetPayload<{ select: typeof photoSummary }>,
@@ -22,7 +23,7 @@ type PhotoRow = Omit<
   effectiveDate: Date;
   uploaderName: string;
 };
-const dateExpression = Prisma.sql`COALESCE(p."manualCapturedDate", (COALESCE(p."capturedAt",p."createdAt") AT TIME ZONE INTERVAL '+09:00')::date)`;
+const dateExpression = effectivePhotoDateSql;
 @Injectable()
 export class MemoriesRepository {
   constructor(
@@ -70,7 +71,7 @@ export class MemoriesRepository {
         older = Prisma.sql`AND (${dateExpression},p.id)<(${anchor[0].date}::date,${q.cursor}::uuid)`;
       }
       const rows = await tx.$queryRaw<PhotoRow[]>(
-        Prisma.sql`SELECT p.id,p."groupId",p."albumId",p."uploaderId",p.width,p.height,p."capturedAt",p."manualCapturedDate",p."captureDateSource",p."createdAt",p.status,a.title AS "albumTitle",up."displayName" AS "uploaderName",${dateExpression} AS "effectiveDate" ${visible} ${older} ORDER BY ${dateExpression} DESC,p.id DESC LIMIT ${q.limit + 1}`
+        Prisma.sql`SELECT p.id,p."groupId",p."albumId",p."uploaderId",p.width,p.height,p."capturedAt",p."manualCapturedDate",p."captureDateSource",p."createdAt",p.status,p."mediaKind"::text AS "mediaKind",p."durationMs",a.title AS "albumTitle",up."displayName" AS "uploaderName",${dateExpression} AS "effectiveDate" ${visible} ${older} ORDER BY ${dateExpression} DESC,p.id DESC LIMIT ${q.limit + 1}`
       );
       const more = rows.length > q.limit;
       if (more) rows.pop();

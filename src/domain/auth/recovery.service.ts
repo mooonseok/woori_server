@@ -1,9 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { Request } from 'express';
 import { RecoveryRepository } from './recovery.repository';
 import { AuthRateLimitService } from './auth-rate-limit.service';
-import { MailService } from './mail.service';
+import { MailOutboxService, requireMailConfigured } from '../mail/mail-outbox';
 import { createToken, hashToken } from './auth-token';
 import { hashPassword } from './password';
 import { publicUser } from './auth.service';
@@ -15,7 +16,7 @@ export class RecoveryService {
   constructor(
     private readonly repository: RecoveryRepository,
     private readonly limits: AuthRateLimitService,
-    private readonly mail: MailService
+    private readonly outbox: MailOutboxService
   ) {}
   async request(
     kind: 'username' | 'password',
@@ -35,21 +36,35 @@ export class RecoveryService {
       delay(3000),
       (async () => {
         try {
+          requireMailConfigured();
           const user = await this.repository.findAccount(dto.name, dto.email);
           if (!user) return;
-          if (kind === 'username')
-            await this.mail.sendUsername(user.email, user.username);
-          else {
+          // Queued with the token in one transaction, tried now, retried by
+          // the worker; the response never depends on delivery.
+          if (kind === 'username') {
+            const id = randomUUID();
+            if (
+              await this.repository.issueUsername(
+                user.id,
+                dto.name,
+                dto.email,
+                id
+              )
+            )
+              await this.outbox.dispatch(id);
+          } else {
             const token = createToken();
+            const mail = { id: randomUUID(), token };
             if (
               await this.repository.issue(
                 user.id,
                 dto.name,
                 dto.email,
-                hashToken(token)
+                hashToken(token),
+                mail
               )
             )
-              await this.mail.sendPasswordReset(user.email, token);
+              await this.outbox.dispatch(mail.id);
           }
         } catch {
           // Keep a possibly delivered reset token valid after provider timeout.

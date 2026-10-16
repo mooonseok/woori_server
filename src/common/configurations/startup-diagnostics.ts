@@ -1,3 +1,4 @@
+import { VIDEO_PRESET_ERROR } from '../media/video-transcode';
 /** Never log arbitrary exception messages/stacks: they can contain connection strings or tokens. */
 export function startupFailure(error: unknown, port?: number): string {
   const target = port === undefined ? '설정된 포트' : `${port}번 포트`;
@@ -19,6 +20,13 @@ export function startupFailure(error: unknown, port?: number): string {
       return '[ETIMEDOUT] 서비스 연결 시간이 초과되었습니다. 네트워크와 연결 설정을 확인하세요.';
   }
   const message = error instanceof Error ? error.message : '';
+  // Production checks name settings only (A-Z, 0-9, _), never values.
+  const production =
+    /^Production configuration invalid: ([A-Z0-9_]+(?:,[A-Z0-9_]+)*)$/.exec(
+      message
+    );
+  if (production)
+    return `[CONFIG] 운영 환경 설정을 확인하세요: ${production[1].split(',').join(', ')}. https origin(WEB_ORIGIN·ADMIN_WEB_ORIGIN·CORS_ALLOWED_ORIGINS), TRUST_PROXY_HOPS=1, MAIL_MODE=resend와 웹 도메인 하위 발신 주소(MAIL_FROM), MAIL_OUTBOX_KEY, R2 설정, 운영 DB 주소가 필요합니다. 설정값은 출력하지 않습니다.`;
   // Only these exact, value-free messages are safe to expose.
   const configurationErrors: Record<string, string> = {
     'Web Push requires all VAPID and encryption settings':
@@ -33,6 +41,10 @@ export function startupFailure(error: unknown, port?: number): string {
       'ADMIN_WEB_ORIGIN에는 관리자 웹의 정확한 http(s)://호스트:포트 origin을 넣고 같은 값을 CORS_ALLOWED_ORIGINS에도 추가하세요. 관리자 기능을 쓰지 않으려면 비워 두세요.',
     'ADMIN_TOTP_ENCRYPTION_KEY must be a base64 32-byte key (value redacted)':
       'ADMIN_TOTP_ENCRYPTION_KEY는 32바이트 base64 키여야 합니다. pnpm admin:keys로 새 키 파일을 만들 수 있습니다. 설정값은 출력하지 않습니다.',
+    'MAIL_OUTBOX_KEY must be a base64 32-byte key (value redacted)':
+      'MAIL_OUTBOX_KEY는 32바이트 base64 키여야 합니다. pnpm mail:keys로 새 키 파일을 만들 수 있습니다(API·워커 같은 값). 설정값은 출력하지 않습니다.',
+    [VIDEO_PRESET_ERROR]:
+      'VIDEO_X264_PRESET은 ultrafast·superfast·veryfast·faster·fast·medium 중 하나여야 합니다(기본 veryfast). 비우면 기본값을 씁니다.',
     'CORS_ALLOWED_ORIGINS must contain exact HTTP(S) origins':
       'CORS_ALLOWED_ORIGINS에는 http(s)://호스트:포트 형식의 origin을 쉼표로 구분해 넣으세요. 경로와 마지막 /는 제외하세요.',
   };

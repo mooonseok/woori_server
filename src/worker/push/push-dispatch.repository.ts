@@ -6,6 +6,7 @@ import {
   visible,
   type InboxRow,
 } from '../../domain/notifications/notifications.repository';
+import { pushSequence } from '../../domain/notifications/notification-bundles';
 import {
   evaluateNotification,
   type NotificationKind,
@@ -25,9 +26,12 @@ export class PushDispatchRepository {
     return this.prisma.client.$transaction(async (tx) => {
       // Fanout contains only database work; holding the row lock until commit is
       // sufficient. A crash rolls back both deliveries and outbox completion.
+      // nextAttemptAt is written on the app clock (Prisma @default(now()), bundle
+      // push delays and finish()), so it is compared on the app clock, not
+      // PostgreSQL now().
       const rows = await tx.$queryRaw<
-        { id: string; aggregateId: string; createdAt: Date }[]
-      >`SELECT id,"aggregateId","createdAt" FROM woori.outbox_events WHERE type='NOTIFICATION_PUSH' AND status='PENDING' AND "nextAttemptAt"<=now() ORDER BY "createdAt",id FOR UPDATE SKIP LOCKED LIMIT 1`;
+        { id: string; aggregateId: string; payload: unknown }[]
+      >`SELECT id,"aggregateId",payload FROM woori.outbox_events WHERE type='NOTIFICATION_PUSH' AND status='PENDING' AND "nextAttemptAt"<=${new Date()} ORDER BY "createdAt",id FOR UPDATE SKIP LOCKED LIMIT 1`;
       const event = rows[0];
       if (!event) return false;
       const notification = await tx.notification.findUnique({
@@ -50,13 +54,65 @@ export class PushDispatchRepository {
           },
           select: { id: true, bindingVersion: true },
         });
-        await tx.notificationDelivery.createMany({
-          data: installations.map((i) => ({
+        // One unsent push per bundle per installation: a delivery of this
+        // notification still waiting (quiet hours, retry backoff or in flight)
+        // already shows the bundle's current state when displayed, so a later
+        // activity never queues a second one (quiet-hours release = one per bundle).
+        // This read only skips work; concurrent fanouts (several worker
+        // replicas) are made exact by the partial unique index
+        // notification_deliveries_one_waiting_idx and ON CONFLICT DO NOTHING
+        // (skipDuplicates). No notification row lock is taken here: erasure
+        // locks notifications before outbox rows, fanout the other way round.
+        const current = new Map(
+          installations.map((i) => [i.id, i.bindingVersion])
+        );
+        const waitingRows = await tx.notificationDelivery.findMany({
+          where: {
             notificationId: notification.id,
-            installationId: i.id,
-            bindingVersion: i.bindingVersion,
-            deliveryKey: `${notification.id}:1:${i.id}:${i.bindingVersion}`,
-          })),
+            status: { in: ['PENDING', 'RUNNING'] },
+          },
+          select: { id: true, installationId: true, bindingVersion: true },
+        });
+        // A waiting row bound to another binding of an installation that is
+        // eligible now can never be sent (beginSend requires the current
+        // binding), yet it would hold the one-waiting slot: it is closed as
+        // DONE 'superseded' (lease cleared, so an in-flight claim no-ops) and
+        // the current binding gets its own row below.
+        const stale = waitingRows
+          .filter(
+            (delivery) =>
+              current.has(delivery.installationId) &&
+              current.get(delivery.installationId) !== delivery.bindingVersion
+          )
+          .map((delivery) => delivery.id);
+        if (stale.length)
+          await tx.notificationDelivery.updateMany({
+            where: {
+              id: { in: stale },
+              status: { in: ['PENDING', 'RUNNING'] },
+            },
+            data: {
+              status: 'DONE',
+              resultCode: 'superseded',
+              leaseToken: null,
+              leaseUntil: null,
+            },
+          });
+        const waiting = new Set(
+          waitingRows
+            .filter((delivery) => !stale.includes(delivery.id))
+            .map((delivery) => delivery.installationId)
+        );
+        const sequence = pushSequence(event.payload);
+        await tx.notificationDelivery.createMany({
+          data: installations
+            .filter((i) => !waiting.has(i.id))
+            .map((i) => ({
+              notificationId: notification.id,
+              installationId: i.id,
+              bindingVersion: i.bindingVersion,
+              deliveryKey: `${notification.id}:${sequence}:${i.id}:${i.bindingVersion}`,
+            })),
           skipDuplicates: true,
         });
       }
@@ -69,10 +125,12 @@ export class PushDispatchRepository {
   }
   async claim(): Promise<PushClaim | null> {
     const token = randomUUID();
+    // Same clock as the writer of each column: nextAttemptAt (app), leaseUntil (DB).
+    const now = new Date();
     const rows = await this.prisma.client.$queryRaw<
       PushClaim[]
     >`WITH candidate AS (
-      SELECT id FROM woori.notification_deliveries WHERE (status='PENDING' AND "nextAttemptAt"<=now()) OR (status='RUNNING' AND "leaseUntil"<=now())
+      SELECT id FROM woori.notification_deliveries WHERE (status='PENDING' AND "nextAttemptAt"<=${now}) OR (status='RUNNING' AND "leaseUntil"<=now())
       ORDER BY "nextAttemptAt",id FOR UPDATE SKIP LOCKED LIMIT 1)
       UPDATE woori.notification_deliveries d SET status='RUNNING',"leaseToken"=${token}::uuid,"leaseUntil"=now()+interval '60 seconds' FROM candidate c WHERE d.id=c.id
       RETURNING d.id,d."notificationId",d."installationId",d."bindingVersion",d."leaseToken",d.attempts`;
@@ -148,7 +206,16 @@ export class PushDispatchRepository {
         groupId: n.groupId,
         targetId: n.targetId,
         kind: n.kind.toLowerCase() as NotificationKind,
-        activities: [{ eventId: n.id, actorId: row.actorId, sequence: 1 }],
+        // The latest VISIBLE activity of the bundle decides unread state
+        // (visible() already dropped blocked/withdrawn actors, deleted photos and
+        // removed reactions).
+        activities: [
+          {
+            eventId: `${n.id}:${row.latestSequence}`,
+            actorId: row.actorId,
+            sequence: row.latestSequence,
+          },
+        ],
         readThroughSequence: n.readThroughSequence,
       },
       {
@@ -197,29 +264,24 @@ export class PushDispatchRepository {
     resultCode: string,
     options: { retryAfterMs?: number; failed?: boolean; revoke?: boolean } = {}
   ) {
+    const status = options.retryAfterMs
+      ? 'PENDING'
+      : options.failed
+        ? 'FAILED'
+        : 'DONE';
+    // nextAttemptAt is compared on the app clock by claim(), so it is written
+    // on the app clock; leaseUntil was written by PostgreSQL (claim) and is
+    // compared with now() here, like beginSend: an app clock running ahead of
+    // the database can never strand a finished delivery in RUNNING.
+    const nextAttemptAt = options.retryAfterMs
+      ? new Date(Date.now() + options.retryAfterMs)
+      : null;
     await this.prisma.client.$transaction(async (tx) => {
-      const result = await tx.notificationDelivery.updateMany({
-        where: {
-          id: job.id,
-          leaseToken: job.leaseToken,
-          status: 'RUNNING',
-          leaseUntil: { gt: new Date() },
-        },
-        data: {
-          status: options.retryAfterMs
-            ? 'PENDING'
-            : options.failed
-              ? 'FAILED'
-              : 'DONE',
-          resultCode,
-          leaseToken: null,
-          leaseUntil: null,
-          ...(options.retryAfterMs
-            ? { nextAttemptAt: new Date(Date.now() + options.retryAfterMs) }
-            : {}),
-        },
-      });
-      if (result.count && options.revoke)
+      const count = await tx.$executeRaw`
+        UPDATE woori.notification_deliveries SET status=${status}::woori."JobStatus","resultCode"=${resultCode},
+          "leaseToken"=NULL,"leaseUntil"=NULL,"nextAttemptAt"=COALESCE(${nextAttemptAt}::timestamptz,"nextAttemptAt")
+        WHERE id=${job.id}::uuid AND "leaseToken"=${job.leaseToken}::uuid AND status='RUNNING' AND "leaseUntil">now()`;
+      if (count && options.revoke)
         await tx.pushInstallation.updateMany({
           where: { id: job.installationId, bindingVersion: job.bindingVersion },
           data: {

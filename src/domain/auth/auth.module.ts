@@ -10,9 +10,9 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { AuthRepository } from './auth.repository';
 import { AuthRateLimitService } from './auth-rate-limit.service';
-import { MailService } from './mail.service';
+import { MailModule } from '../mail/mail.module';
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, MailModule],
   controllers: [AuthController],
   providers: [
     AccountDeletionRepository,
@@ -22,7 +22,6 @@ import { MailService } from './mail.service';
     AuthService,
     AuthRepository,
     AuthRateLimitService,
-    MailService,
     RecoveryRepository,
     RecoveryService,
   ],

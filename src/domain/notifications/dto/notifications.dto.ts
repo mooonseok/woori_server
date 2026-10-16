@@ -25,8 +25,10 @@ export class NotificationListDto {
   @ValidateIf(optional) @IsUUID() cursor?: string;
   @Type(() => Number) @IsInt() @Min(1) @Max(100) limit = 30;
 }
+// The latestSequence the client observed (a bundle grows past 1). The server
+// also rejects a sequence that was never allocated for that notification.
 export class ReadNotificationDto {
-  @IsInt() @Min(1) @Max(1) throughSequence!: number;
+  @IsInt() @Min(1) @Max(2147483647) throughSequence!: number;
 }
 export class ObservedNotificationDto extends ReadNotificationDto {
   @IsUUID() id!: string;

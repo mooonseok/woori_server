@@ -541,6 +541,14 @@ test('isolated PostgreSQL: personal one-directional user blocks', async (t) => {
       'new activity by the blocked user never reaches the blocker’s inbox or push',
       async () => {
         const before = await fromActor(c.id, b.id);
+        const activitiesFor = async (recipientId: string, actorId: string) =>
+          (
+            await admin.query(
+              'SELECT x."photoId" FROM woori.notification_activities x JOIN woori.notifications n ON n.id=x."notificationId" WHERE n."recipientId"=$1 AND x."actorId"=$2',
+              [recipientId, actorId]
+            )
+          ).rows.map((row: { photoId: string | null }) => row.photoId);
+        const beforeActivities = await activitiesFor(c.id, b.id);
         await comment(b, pA, { body: '알림 없어야 함', kind: 'GENERAL' });
         await react(b, pA, '👏');
         const pNew = await photo(b.id, 1);
@@ -550,7 +558,16 @@ test('isolated PostgreSQL: personal one-directional user blocks', async (t) => {
             recordPhotoActivity(tx, pNew, b.id, 'PHOTOS', pNew)
           );
         assert.deepEqual(await fromActor(a.id, b.id), []);
-        assert.equal((await fromActor(c.id, b.id)).length, before.length + 1);
+        // W07 upload bundling: B's new photo reaches C as exactly one more
+        // activity of C's open B/album bundle (same uploader + album within 10
+        // minutes), not as a second row.
+        assert.deepEqual(await fromActor(c.id, b.id), before);
+        const afterActivities = await activitiesFor(c.id, b.id);
+        assert.equal(afterActivities.length, beforeActivities.length + 1);
+        assert.equal(
+          afterActivities.filter((photoId) => photoId === pNew).length,
+          1
+        );
         // A notification that slipped in concurrently (inserted directly here)
         // is still hidden by every read path and push eligibility.
         const binding = (
@@ -610,14 +627,20 @@ test('isolated PostgreSQL: personal one-directional user blocks', async (t) => {
             .get(`/v1/notifications/${control.notificationId}/target`)
             .expect(200)
         ).body;
+        // Exact shape; OpenAPI 0.20.0 added navigation (COMMENT for a comment),
+        // 0.24.0 the target media's kind.
         assert.deepEqual(Object.keys(controlTarget).sort(), [
           'albumId',
           'commentId',
           'groupId',
           'latestSequence',
+          'mediaKind',
+          'navigation',
           'photoId',
           'uploader',
         ]);
+        assert.equal(controlTarget.navigation, 'COMMENT');
+        assert.equal(controlTarget.mediaKind, 'PHOTO');
         assert.deepEqual(controlTarget.uploader, {
           id: a.id,
           displayName: 'b_owner_a',

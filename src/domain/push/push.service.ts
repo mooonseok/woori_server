@@ -16,6 +16,7 @@ import {
 import { hashToken, sessionToken } from '../auth/auth-token';
 import { AuthRateLimitService } from '../auth/auth-rate-limit.service';
 import { PushDispatchRepository } from '../../worker/push/push-dispatch.repository';
+import { pushBody } from '../notifications/notification-bundles';
 import { PushRepository } from './push.repository';
 import type { PushSubscriptionDto } from './dto/push.dto';
 @Injectable()
@@ -81,18 +82,12 @@ export class PushService {
     if (!current || current.decision.action !== 'send')
       throw new NotFoundException();
     const { row, delivery, preview } = current;
-    const action =
-      {
-        PHOTOS: '새 사진을 올렸어요.',
-        COMMENT: '내 사진에 댓글을 남겼어요.',
-        PIN: '내 사진에 위치 댓글을 남겼어요.',
-        REACTION: '내 사진에 반응했어요.',
-      }[row.kind] ?? '새 소식이 있어요.';
+    // One tag per notification row: every push of an upload/reaction bundle
+    // carries the same tag, so a later push replaces the earlier OS notification.
+    // The text reflects the bundle's visible state at display time.
     return {
       title: '우리',
-      body: preview
-        ? `${row.actorName}님이 ${action}`
-        : '가족의 새로운 소식이 있어요.',
+      body: pushBody(row, preview),
       tag: `woori-${row.id}`,
       notificationId: row.id,
       recipientId: delivery.notification.recipientId,

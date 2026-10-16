@@ -166,10 +166,29 @@
     {
       "id": "W07",
       "title": "가족 베타 운영",
-      "status": "pending",
-      "evidence": [],
-      "implementationRefs": [],
-      "peerEvidence": []
+      "status": "in_progress",
+      "evidence": [
+        "2026-10-16 W07 code on feature/family-beta-ops (uncommitted), server OpenAPI 0.25.0: (1) upload/reaction notification bundling (same uploader+album 10-min window anchored on first READY photo, ~2-min delayed push, reactions 30-min/1-min, replace by tag, quiet-hours one push per bundle, lastSequence unread transitions, visible-only counts) plus app-clock vs DB-clock fixes for push nextAttemptAt and notice publishedAt; (2) album list cursor pagination (30, ALBUM_CURSOR_INVALID) and KST date range, grid 480px thumbnails, background refresh without loading flash; (3) video upload (mp4/mov, 1 min/200 MB, worker ffmpeg H.264/AAC transcode with metadata stripped, original deleted, posters, signed play/download, admin audited video view, 300 MB per-selection total kept); (4) ops: encrypted mail outbox with retries and Idempotency-Key, worker heartbeat/queue-lag metrics, R2 weekly backup script with manifest-based prune guards, production config validation, Railway/R2/Cloudflare Pages config and SETUP.md runbook.",
+        "2026-10-16 verification: server isolated plain copy prisma:validate/typecheck/format, unit 134, integration 199 (also 199/199 with simulated clock skew +3 ms and -50 ms); client lint/typecheck/boundaries/format, tests scripts 16, web 162, admin 79; isolated web/admin builds and pages:web/pages:admin production-value builds; browser checks against 127.0.0.1 mocks (real pointer clicks and CDP touch at 375px for video controls/swipe, upload progress/cancel/retry, notification bundles, album paging, admin metrics, CSP with hashed inline scripts, no violations). Three independent read-only reviews (W07-1/2, W07-3/4 server, W07-3/4 web) found 1 high + 6 medium + 15 low issues; all fixed and re-verified.",
+        "2026-10-16 with explicit user approval and a pg_dump backup, migrations 20261029000000_notification_bundles, 20261030000000_video_media, 20261030010000_one_waiting_delivery, 20261031000000_mail_outbox_monitoring and runtime grants applied to 127.0.0.1:55439/woori_dev; schema up to date, column-scoped UPDATE grants and RLS verified, existing 3 users/1 group unchanged; local MAIL_OUTBOX_KEY generated via pnpm mail:keys (gitignored) and added to .env without printing. ffmpeg 9.0.2 installed locally via Homebrew with user approval; worker image uses Debian ffmpeg.",
+        "W07 remains in_progress: production accounts/resources are not provisioned (Supabase Singapore, Railway API+worker, Cloudflare Pages x2 + DNS (api DNS-only), R2 production+backup buckets/CORS/lifecycle, Resend mail.woori.stream), no HTTPS end-to-end, device web push, worker restart, Docker/Debian ffmpeg build, Railway CPU/cost, real R2 range playback/download, iOS Safari video, restore drill or family usage observation yet."
+      ],
+      "implementationRefs": [
+        "feature/family-beta-ops (uncommitted)",
+        "src/domain/notifications/notification-bundles.ts",
+        "src/worker/push/push-dispatch.repository.ts",
+        "src/domain/albums/*",
+        "src/common/media/video-transcode.ts",
+        "src/domain/mail-outbox (mail outbox)",
+        "src/worker/main.ts",
+        "scripts/r2-backup.mjs",
+        "deploy/*",
+        "prisma/migrations/20261029000000_notification_bundles..20261031000000_mail_outbox_monitoring",
+        "contracts/openapi.json 0.25.0"
+      ],
+      "peerEvidence": [
+        "W07 web/admin aligned with contracts/openapi.json 0.25.0 (bundles, album pages, video, metrics busy fields)."
+      ]
     },
     {
       "id": "W08",
@@ -184,7 +203,8 @@
     "W04: physical iPhone/Android acceptance and deployment memory testing remain; HEIC decoder adoption deferred after failed installed-decoder PoC.",
     "W05: physical-device/mobile screen-reader validation remains; operator identity, privacy contact, retention periods and legal policy text are undecided and shown as placeholders.",
     "W06: audit-log, report and inquiry retention periods undecided; operator identity/contact still placeholders (W05).",
-    "W07-W08: review corresponding DESIGN.md decisions before implementation."
+    "W07: decisions complete (infra, bundling, beta scope incl. video, 300 MB selection total); remaining is user provisioning of production accounts and deployment acceptance.",
+    "W08: review corresponding DESIGN.md decisions before implementation."
   ],
   "durableDecisionsMoved": false,
   "permanentRefs": []

@@ -54,7 +54,8 @@ const audit = (
 export class AdminNoticesRepository {
   constructor(private readonly prisma: PrismaService) {}
   // Newest-updated first. Notices are never deleted, so an unknown cursor is a
-  // client error. scheduled: published with a future publication time.
+  // client error. scheduled: published with a future publication time (app
+  // clock, the clock that wrote publishedAt).
   async list(limit: number, status?: string, cursor?: string) {
     const client = this.prisma.client;
     if (
@@ -72,7 +73,7 @@ export class AdminNoticesRepository {
       ? Prisma.sql`AND (n."updatedAt",n.id)<(SELECT "updatedAt",id FROM woori.notices WHERE id=${cursor}::uuid)`
       : Prisma.empty;
     const rows = await client.$queryRaw<NoticeSummaryRow[]>(
-      Prisma.sql`SELECT n.id,n.title,n.status::text AS status,n."publishedAt",n."createdAt",n."updatedAt",(n.status='PUBLISHED' AND n."publishedAt">now()) AS scheduled FROM woori.notices n WHERE TRUE ${filter} ${after} ORDER BY n."updatedAt" DESC,n.id DESC LIMIT ${limit + 1}`
+      Prisma.sql`SELECT n.id,n.title,n.status::text AS status,n."publishedAt",n."createdAt",n."updatedAt",(n.status='PUBLISHED' AND n."publishedAt">${new Date()}) AS scheduled FROM woori.notices n WHERE TRUE ${filter} ${after} ORDER BY n."updatedAt" DESC,n.id DESC LIMIT ${limit + 1}`
     );
     const more = rows.length > limit;
     if (more) rows.pop();

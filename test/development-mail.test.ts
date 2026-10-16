@@ -17,6 +17,7 @@ test('portable development mail uses the current home and preserves private file
     MAIL_MODE: process.env.MAIL_MODE,
     NODE_ENV: process.env.NODE_ENV,
     WEB_ORIGIN: process.env.WEB_ORIGIN,
+    MAIL_OUTBOX_KEY: process.env.MAIL_OUTBOX_KEY,
   };
   t.after(async () => {
     t.mock.restoreAll();
@@ -30,6 +31,8 @@ test('portable development mail uses the current home and preserves private file
   process.env.NODE_ENV = 'development';
   process.env.MAIL_MODE = 'file';
   process.env.WEB_ORIGIN = 'http://localhost:3210';
+  // W07-4: readiness also needs the mail outbox payload key.
+  process.env.MAIL_OUTBOX_KEY = Buffer.alloc(32, 7).toString('base64');
   delete process.env.DEV_MAIL_DIR;
   const directory = join(home, '.woori', 'dev-mail');
   assert.equal(developmentMailDirectory(), directory);

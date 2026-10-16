@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/modules/prisma/prisma.service';
+import { enqueueMail, MAIL_TTL_MS } from '../mail/mail-outbox';
+import type { TokenMail } from './auth.repository';
 import { revokeAccountCredentials } from './revoke-account-credentials';
 @Injectable()
 export class AccountSettingsRepository {
@@ -58,7 +60,8 @@ export class AccountSettingsRepository {
     sessionHash: string,
     expectedHash: string,
     targetEmail: string,
-    tokenHash: string
+    tokenHash: string,
+    mail: TokenMail
   ) {
     await this.prisma.client.$transaction(async (tx) => {
       const user = await this.lockActor(tx, userId, sessionHash, expectedHash);
@@ -78,7 +81,7 @@ export class AccountSettingsRepository {
         where: { userId, purpose: 'CHANGE_EMAIL', consumedAt: null },
         data: { consumedAt: new Date() },
       });
-      await tx.emailToken.create({
+      const created = await tx.emailToken.create({
         data: {
           userId,
           purpose: 'CHANGE_EMAIL',
@@ -87,9 +90,25 @@ export class AccountSettingsRepository {
           expiresAt: new Date(Date.now() + 30 * 60 * 1000),
         },
       });
+      await enqueueMail(tx, {
+        id: mail.id,
+        kind: 'CHANGE_EMAIL',
+        userId,
+        emailTokenId: created.id,
+        payload: { to: targetEmail, token: mail.token },
+        expiresAt: created.expiresAt,
+      });
     });
   }
-  async confirmEmail(userId: string, sessionHash: string, tokenHash: string) {
+  // noticeMailId: the previous-address notice is queued in the same
+  // transaction as the change when mail is configured (a missing mail setup
+  // never blocks the confirmation itself).
+  async confirmEmail(
+    userId: string,
+    sessionHash: string,
+    tokenHash: string,
+    noticeMailId?: string
+  ) {
     try {
       return await this.prisma.client.$transaction(async (tx) => {
         const user = await this.lockActor(tx, userId, sessionHash);
@@ -113,7 +132,20 @@ export class AccountSettingsRepository {
           data: { email: token.targetEmail, verifiedAt: now },
         });
         await revokeAccountCredentials(tx, userId, now);
-        return { previousEmail: user.email };
+        if (noticeMailId)
+          await enqueueMail(tx, {
+            id: noticeMailId,
+            kind: 'EMAIL_CHANGED_NOTICE',
+            userId,
+            payload: { to: user.email },
+            expiresAt: new Date(
+              now.getTime() + MAIL_TTL_MS.EMAIL_CHANGED_NOTICE
+            ),
+          });
+        return {
+          previousEmail: user.email,
+          noticeQueued: Boolean(noticeMailId),
+        };
       });
     } catch (error) {
       if (

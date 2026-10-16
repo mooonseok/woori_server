@@ -57,6 +57,23 @@ enum CommentKind {
   @@schema("woori")
 }
 
+enum MailKind {
+  VERIFY_EMAIL
+  RECOVER_USERNAME
+  RESET_PASSWORD
+  CHANGE_EMAIL
+  EMAIL_CHANGED_NOTICE
+
+  @@schema("woori")
+}
+
+enum MediaKind {
+  PHOTO
+  VIDEO
+
+  @@schema("woori")
+}
+
 enum NotificationKind {
   PHOTOS
   COMMENT
@@ -176,6 +193,7 @@ model User {
   reportsReceived        ContentReport[]               @relation("ReportsReceived")
   blocks                 UserBlock[]                   @relation("Blocker")
   blockedBy              UserBlock[]                   @relation("BlockedUser")
+  mails                  MailOutbox[]
 
   @@index([status, createdAt(sort: Desc), id(sort: Desc)])
   @@map("users")
@@ -199,21 +217,23 @@ model Session {
 }
 
 model Group {
-  id            String                        @id @default(uuid()) @db.Uuid
-  name          String                        @db.VarChar(100)
-  ownerId       String                        @db.Uuid
-  status        GroupStatus                   @default(ACTIVE)
-  quotaBytes    BigInt                        @default(21474836480)
-  usedBytes     BigInt                        @default(0)
-  createdAt     DateTime                      @default(now()) @db.Timestamptz(6)
-  owner         User                          @relation(fields: [ownerId], references: [id], onDelete: Restrict)
-  invitations   Invitation[]
-  memberships   Membership[]
-  albums        Album[]
-  photos        Photo[]
-  notifications Notification[]
-  preferences   GroupNotificationPreference[]
-  reports       ContentReport[]
+  id                  String                        @id @default(uuid()) @db.Uuid
+  name                String                        @db.VarChar(100)
+  ownerId             String                        @db.Uuid
+  status              GroupStatus                   @default(ACTIVE)
+  quotaBytes          BigInt                        @default(21474836480)
+  usedBytes           BigInt                        @default(0)
+  // W07-4: when deletion was requested (group cleanup queue lag).
+  deletionRequestedAt DateTime?                     @db.Timestamptz(6)
+  createdAt           DateTime                      @default(now()) @db.Timestamptz(6)
+  owner               User                          @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  invitations         Invitation[]
+  memberships         Membership[]
+  albums              Album[]
+  photos              Photo[]
+  notifications       Notification[]
+  preferences         GroupNotificationPreference[]
+  reports             ContentReport[]
 
   @@index([status, createdAt(sort: Desc), id(sort: Desc)])
   @@index([ownerId, status])
@@ -278,6 +298,10 @@ model Photo {
   processingDeadlineAt     DateTime?               @db.Timestamptz(6)
   processingAttempts       Int                     @default(0)
   processingErrorCode      String?                 @db.VarChar(48)
+  // W07-3: set at upload reservation and never changed. A VIDEO keeps only
+  // its transcoded MP4 ('video' variant) and posters; durationMs once READY.
+  mediaKind                MediaKind               @default(PHOTO)
+  durationMs               Int?
   createdAt                DateTime                @default(now()) @db.Timestamptz(6)
   deletedAt                DateTime?               @db.Timestamptz(6)
   group                    Group                   @relation(fields: [groupId], references: [id], onDelete: Restrict)
@@ -390,6 +414,12 @@ model Notification {
   targetId            String                 @db.Uuid
   dedupeKey           String                 @db.VarChar(256)
   readThroughSequence Int                    @default(0)
+  // Upload/reaction bundles (W07): the key groups activity per recipient, the
+  // window end is fixed when the bundle opens (anchored on its first activity)
+  // and lastSequence is the monotonic activity counter. Null key: single event.
+  bundleKey           String?                @db.VarChar(256)
+  bundleUntil         DateTime?              @db.Timestamptz(6)
+  lastSequence        Int                    @default(1)
   createdAt           DateTime               @default(now()) @db.Timestamptz(6)
   recipient           User                   @relation(fields: [recipientId], references: [id], onDelete: Restrict)
   group               Group                  @relation(fields: [groupId], references: [id], onDelete: Restrict)
@@ -398,6 +428,7 @@ model Notification {
 
   @@unique([recipientId, dedupeKey])
   @@index([recipientId, createdAt])
+  @@index([recipientId, bundleKey, bundleUntil])
   @@map("notifications")
   @@schema("woori")
 }
@@ -408,6 +439,8 @@ model NotificationActivity {
   actorId        String       @db.Uuid
   sequence       Int
   eventKey       String       @db.VarChar(256)
+  // The uploaded photo of a PHOTOS bundle activity (null: the notification target).
+  photoId        String?      @db.Uuid
   createdAt      DateTime     @default(now()) @db.Timestamptz(6)
   notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Restrict)
 
@@ -455,6 +488,9 @@ model NotificationDelivery {
 
   @@index([status, nextAttemptAt])
   @@index([notificationId])
+  // Migration-only partial unique index (not expressible here):
+  // notification_deliveries_one_waiting_idx (notificationId, installationId)
+  // WHERE status IN ('PENDING','RUNNING').
   @@map("notification_deliveries")
   @@schema("woori")
 }
@@ -478,18 +514,64 @@ model OutboxEvent {
 }
 
 model EmailToken {
-  targetEmail String? @db.VarChar(254)
-  id         String    @id @default(uuid()) @db.Uuid
-  userId     String    @db.Uuid
-  tokenHash  String    @unique @db.VarChar(128)
-  purpose    String    @db.VarChar(32)
-  expiresAt  DateTime  @db.Timestamptz(6)
-  consumedAt DateTime? @db.Timestamptz(6)
-  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
-  user       User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  targetEmail String?      @db.VarChar(254)
+  id          String       @id @default(uuid()) @db.Uuid
+  userId      String       @db.Uuid
+  tokenHash   String       @unique @db.VarChar(128)
+  purpose     String       @db.VarChar(32)
+  expiresAt   DateTime     @db.Timestamptz(6)
+  consumedAt  DateTime?    @db.Timestamptz(6)
+  createdAt   DateTime     @default(now()) @db.Timestamptz(6)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  mails       MailOutbox[]
 
   @@index([userId, purpose, expiresAt])
   @@map("email_tokens")
+  @@schema("woori")
+}
+
+// W07-4 mail outbox: written in the same transaction as the token it carries.
+// payload is AES-256-GCM (MAIL_OUTBOX_KEY, bound to id) of the recipient and
+// the raw token/username; it is nulled once the mail is sent, expired or failed.
+// A token-backed mail is sent only while its token is unconsumed and unexpired.
+model MailOutbox {
+  id            String      @id @db.Uuid
+  kind          MailKind
+  userId        String      @db.Uuid
+  emailTokenId  String?     @db.Uuid
+  payload       String?
+  status        JobStatus   @default(PENDING)
+  attempts      Int         @default(0)
+  nextAttemptAt DateTime    @default(now()) @db.Timestamptz(6)
+  leaseUntil    DateTime?   @db.Timestamptz(6)
+  leaseToken    String?     @db.Uuid
+  expiresAt     DateTime    @db.Timestamptz(6)
+  resultCode    String?     @db.VarChar(48)
+  sentAt        DateTime?   @db.Timestamptz(6)
+  createdAt     DateTime    @default(now()) @db.Timestamptz(6)
+  user          User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  emailToken    EmailToken? @relation(fields: [emailTokenId], references: [id], onDelete: SetNull)
+
+  @@index([status, nextAttemptAt])
+  @@index([userId])
+  @@index([emailTokenId])
+  @@index([createdAt])
+  @@map("mail_outbox")
+  @@schema("woori")
+}
+
+// W07-4 monitoring: one row per worker process, updated after every pass
+// (beatAt on the database clock).
+model WorkerHeartbeat {
+  instanceId String    @id @db.VarChar(64)
+  startedAt  DateTime  @db.Timestamptz(6)
+  beatAt     DateTime  @db.Timestamptz(6)
+  lastPassOk Boolean
+  videoReady Boolean
+  busyJob    String?   @db.VarChar(48)
+  busySince  DateTime? @db.Timestamptz(6)
+
+  @@map("worker_heartbeats")
   @@schema("woori")
 }
 

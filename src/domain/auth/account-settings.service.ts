@@ -2,13 +2,14 @@ import {
   BadRequestException,
   Injectable,
   Logger,
-  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AccountSettingsRepository } from './account-settings.repository';
 import { AuthRateLimitService } from './auth-rate-limit.service';
-import { MailService } from './mail.service';
+import { randomUUID } from 'node:crypto';
+import { mailConfigured } from '../../common/mail/mail-config';
+import { MailOutboxService, requireMailConfigured } from '../mail/mail-outbox';
 import { ChangePasswordDto, RequestEmailChangeDto } from './dto/auth.dto';
 import {
   clearSessionCookie,
@@ -23,7 +24,7 @@ export class AccountSettingsService {
   constructor(
     private readonly repository: AccountSettingsRepository,
     private readonly limits: AuthRateLimitService,
-    private readonly mail: MailService
+    private readonly outbox: MailOutboxService
   ) {}
   private session(request: Request) {
     const token = sessionToken(request);
@@ -73,22 +74,20 @@ export class AccountSettingsService {
       5,
       60 * 60 * 1000
     );
+    // No token is issued when mail cannot be queued; once queued with its
+    // token, a provider failure is retried by the worker (the link stays valid).
+    requireMailConfigured();
     const token = createToken();
+    const mail = { id: randomUUID(), token };
     await this.repository.requestEmail(
       userId,
       sessionHash,
       user.passwordHash,
       dto.newEmail,
-      hashToken(token)
+      hashToken(token),
+      mail
     );
-    try {
-      await this.mail.sendEmailChange(dto.newEmail, token);
-    } catch {
-      throw new ServiceUnavailableException({
-        code: 'MAIL_DELIVERY_UNAVAILABLE',
-        message: '메일을 보내지 못했어요. 잠시 후 다시 요청해 주세요.',
-      });
-    }
+    await this.outbox.dispatch(mail.id).catch(() => false);
     return { accepted: true };
   }
   async confirmEmail(
@@ -98,18 +97,19 @@ export class AccountSettingsService {
     response: Response
   ) {
     await this.limits.consume(`email-change-confirm:${userId}`, 20);
+    const noticeId = mailConfigured() ? randomUUID() : undefined;
     const result = await this.repository.confirmEmail(
       userId,
       this.session(request),
-      hashToken(token)
+      hashToken(token),
+      noticeId
     );
     clearSessionCookie(response);
-    try {
-      await this.mail.sendEmailChangedNotice(result.previousEmail);
-    } catch {
-      this.logger.warn(
-        'Email-change notice delivery failed; no recipient or token logged.'
-      );
-    }
+    // The notice was queued with the change; delivery problems never reverse it.
+    if (noticeId && result.noticeQueued)
+      if (!(await this.outbox.dispatch(noticeId).catch(() => false)))
+        this.logger.warn(
+          'Email-change notice not delivered yet; queued for retry (no recipient logged).'
+        );
   }
 }

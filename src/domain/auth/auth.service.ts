@@ -6,11 +6,12 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Prisma, User } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import type { SessionUser } from '../../common/dto/session-user.dto';
 import { AuthRepository } from './auth.repository';
 import { AuthRateLimitService } from './auth-rate-limit.service';
-import { MailService } from './mail.service';
+import { MailOutboxService, requireMailConfigured } from '../mail/mail-outbox';
 import { LoginDto, SignupDto } from './dto/auth.dto';
 import {
   clearSessionCookie,
@@ -34,7 +35,7 @@ export class AuthService {
   constructor(
     private readonly repository: AuthRepository,
     private readonly limits: AuthRateLimitService,
-    private readonly mail: MailService
+    private readonly outbox: MailOutboxService
   ) {}
   async signup(dto: SignupDto, request: Request, response: Response) {
     await this.limits.consume(
@@ -68,6 +69,8 @@ export class AuthService {
       throw error;
     }
     await this.rotateCookie(request, response, token);
+    // 'sent': queued for delivery with its token (tried immediately, retried by
+    // the worker). 'unavailable': mail is not configured; nothing was queued.
     let verificationDelivery: 'sent' | 'unavailable' = 'sent';
     try {
       await this.sendVerification(user.id, user.email);
@@ -142,9 +145,18 @@ export class AuthService {
     };
   }
   private async sendVerification(userId: string, email: string) {
+    requireMailConfigured();
     const token = createToken();
-    if (await this.repository.createEmailToken(userId, hashToken(token), email))
-      await this.mail.sendVerification(email, token);
+    const mail = { id: randomUUID(), token };
+    if (
+      await this.repository.createEmailToken(
+        userId,
+        hashToken(token),
+        email,
+        mail
+      )
+    )
+      await this.outbox.dispatch(mail.id);
   }
   private async rotateCookie(
     request: Request,

@@ -48,6 +48,20 @@ export class AdminContentController {
       disposition: 'inline',
     });
   }
+  // Video (W07-3): the poster is the photo view above; the stream is a signed
+  // short-lived URL to the transcoded MP4 issued only after the audit row.
+  @RequireAdminReauth()
+  @Post('photos/:photoId/video')
+  @HttpCode(200)
+  viewVideo(
+    @CurrentAdmin() session: AdminSessionContext,
+    @Param() params: AdminPhotoParamsDto,
+    @Body() dto: AdminViewReasonDto,
+    @Res({ passthrough: true }) response: Response
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    return this.service.viewVideo(session.admin.id, params.photoId, dto.reason);
+  }
   @RequireAdminReauth()
   @Post('comments/:commentId/view')
   @HttpCode(200)

@@ -141,6 +141,8 @@ export class AccountDeletionRepository {
               where: { recipientId: userId },
             });
             await tx.pushInstallation.deleteMany({ where: { userId } });
+            // Queued mails (encrypted recipient/token) go with the account.
+            await tx.mailOutbox.deleteMany({ where: { userId } });
             await tx.session.deleteMany({ where: { userId } });
             await tx.emailToken.deleteMany({ where: { userId } });
             await tx.notificationPreference.deleteMany({ where: { userId } });

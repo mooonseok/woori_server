@@ -5,6 +5,8 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../../common/modules/prisma/prisma.service';
+import { enqueueMail, MAIL_TTL_MS } from '../mail/mail-outbox';
+import type { TokenMail } from './auth.repository';
 
 const PURPOSE = 'RESET_PASSWORD';
 // A suspended member may still recover the username or reset the password (the
@@ -19,7 +21,36 @@ export class RecoveryRepository {
       where: { displayName: name, email, status: RECOVERABLE },
     });
   }
-  async issue(userId: string, name: string, email: string, tokenHash: string) {
+  // The username reminder is queued under the same account lock and recheck.
+  async issueUsername(
+    userId: string,
+    name: string,
+    email: string,
+    mailId: string
+  ) {
+    return this.prisma.client.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM woori.users WHERE id=${userId}::uuid FOR UPDATE`;
+      const user = await tx.user.findFirst({
+        where: { id: userId, displayName: name, email, status: RECOVERABLE },
+      });
+      if (!user) return false;
+      await enqueueMail(tx, {
+        id: mailId,
+        kind: 'RECOVER_USERNAME',
+        userId,
+        payload: { to: user.email, username: user.username },
+        expiresAt: new Date(Date.now() + MAIL_TTL_MS.RECOVER_USERNAME),
+      });
+      return true;
+    });
+  }
+  async issue(
+    userId: string,
+    name: string,
+    email: string,
+    tokenHash: string,
+    mail: TokenMail
+  ) {
     return this.prisma.client.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM woori.users WHERE id=${userId}::uuid FOR UPDATE`;
       const user = await tx.user.findFirst({
@@ -30,13 +61,21 @@ export class RecoveryRepository {
         where: { userId, purpose: PURPOSE, consumedAt: null },
         data: { consumedAt: new Date() },
       });
-      await tx.emailToken.create({
+      const created = await tx.emailToken.create({
         data: {
           userId,
           purpose: PURPOSE,
           tokenHash,
           expiresAt: new Date(Date.now() + 30 * 60 * 1000),
         },
+      });
+      await enqueueMail(tx, {
+        id: mail.id,
+        kind: 'RESET_PASSWORD',
+        userId,
+        emailTokenId: created.id,
+        payload: { to: user.email, token: mail.token },
+        expiresAt: created.expiresAt,
       });
       return true;
     });

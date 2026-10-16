@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  HttpException,
   Inject,
   Injectable,
   OnModuleDestroy,
@@ -15,9 +16,36 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { Readable } from 'node:stream';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { mkdtemp, readdir, rm, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Readable, Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import sharp, { OutputInfo } from 'sharp';
 import { exifCapturedAt } from './photo-capture-date';
+import {
+  ffmpegPath,
+  ffprobePath,
+  MAX_VIDEO_OUTPUT_BYTES,
+  MAX_VIDEO_UPLOAD_BYTES,
+  parseOutputProbe,
+  parseVideoProbe,
+  posterArgs,
+  POSTER_TIMEOUT_MS,
+  probeArgs,
+  PROBE_TIMEOUT_MS,
+  runTool,
+  ToolError,
+  TRANSCODE_TIMEOUT_MS,
+  transcodeArgs,
+  VIDEO_MIMES,
+  videoAborted,
+  videoInterrupted,
+  videoPreset,
+  videoRejected,
+  videoToolsUnavailable,
+} from './video-transcode';
 
 export const MAX_UPLOAD_BYTES = 30 * 1024 * 1024;
 export const MAX_TOTAL_VARIANT_BYTES = 90 * 1024 * 1024;
@@ -36,7 +64,9 @@ export interface MediaStorageOptions {
 }
 export interface MediaVariant {
   capturedAt?: Date | null;
-  kind: 'ORIGINAL' | 'DISPLAY' | 'THUMBNAIL';
+  // VIDEO: the transcoded H.264 MP4 (videos keep no ORIGINAL variant).
+  kind: 'ORIGINAL' | 'DISPLAY' | 'THUMBNAIL' | 'VIDEO';
+  durationMs?: number;
   objectKey: string;
   mime: string;
   width: number;
@@ -50,6 +80,10 @@ const mimeByFormat: Record<string, string> = {
 };
 const uploadInvalid = () =>
   new BadRequestException({ code: 'INVALID_PHOTO_FILE' });
+export const VIDEO_URL_TTL_SECONDS = 600;
+const VIDEO_TEMP_PREFIX = 'woori-video-';
+const isVideoMime = (mime: string) =>
+  (VIDEO_MIMES as readonly string[]).includes(mime);
 const unavailable = () =>
   new ServiceUnavailableException({ code: 'MEDIA_STORAGE_UNAVAILABLE' });
 
@@ -78,6 +112,8 @@ export class MediaStorageService implements OnModuleDestroy {
   private client?: S3Client;
   private readonly options: MediaStorageOptions;
   private processing = 0;
+  // Transcoding is CPU-bound: one video at a time per process.
+  private videoProcessing = 0;
   constructor(
     @Optional() @Inject(MEDIA_STORAGE_OPTIONS) options?: MediaStorageOptions
   ) {
@@ -120,23 +156,39 @@ export class MediaStorageService implements OnModuleDestroy {
   }
   private validKey(key: string, prefix?: string): void {
     if (
-      !/^(staging|photos)\/[a-zA-Z0-9/_-]+(?:\.(?:jpg|png|webp))?$/.test(key) ||
+      !/^(staging|photos)\/[a-zA-Z0-9/_-]+(?:\.(?:jpg|png|webp|mp4))?$/.test(
+        key
+      ) ||
       key.includes('//') ||
       key.length > 240 ||
       (prefix && !key.startsWith(prefix))
     )
       throw uploadInvalid();
   }
-  async presign(stagingKey: string, contentType: string, byteSize: number) {
+  async presign(
+    stagingKey: string,
+    contentType: string,
+    byteSize: number,
+    expiresInSeconds = 600
+  ) {
     this.validKey(stagingKey, 'staging/');
+    const video = isVideoMime(contentType);
     if (
-      !Object.values(mimeByFormat).includes(contentType) ||
+      (!video && !Object.values(mimeByFormat).includes(contentType)) ||
       !Number.isSafeInteger(byteSize) ||
       byteSize < 1 ||
-      byteSize > MAX_UPLOAD_BYTES
+      byteSize > (video ? MAX_VIDEO_UPLOAD_BYTES : MAX_UPLOAD_BYTES)
     )
       throw uploadInvalid();
-    const expiresIn = 600;
+    // The reservation's window (uploadWindowMs): 10 min for photos, up to 60
+    // for large videos.
+    if (
+      !Number.isInteger(expiresInSeconds) ||
+      expiresInSeconds < 60 ||
+      expiresInSeconds > 3600
+    )
+      throw uploadInvalid();
+    const expiresIn = expiresInSeconds;
     const uploadUrl = await getSignedUrl(
       this.sdk(),
       new PutObjectCommand({
@@ -370,6 +422,311 @@ export class MediaStorageService implements OnModuleDestroy {
       this.processing--;
     }
   }
+  /** Streams a private object to a local file, bounded by the declared size. */
+  protected async downloadToFile(
+    key: string,
+    path: string,
+    maxBytes: number
+  ): Promise<{ bytes: number; contentType: string }> {
+    this.validKey(key);
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), 120_000);
+    try {
+      const response = await this.sdk().send(
+        new GetObjectCommand({ Bucket: this.options.bucket, Key: key }),
+        { abortSignal: abort.signal }
+      );
+      if (!(response.Body instanceof Readable)) throw unavailable();
+      if (
+        response.ContentLength !== undefined &&
+        response.ContentLength > maxBytes
+      )
+        throw uploadInvalid();
+      let size = 0;
+      await pipeline(
+        response.Body,
+        new Transform({
+          transform(chunk: Buffer, _encoding, done) {
+            size += chunk.length;
+            done(size > maxBytes ? uploadInvalid() : null, chunk);
+          },
+        }),
+        createWriteStream(path, { flags: 'wx', mode: 0o600 }),
+        { signal: abort.signal }
+      );
+      return {
+        bytes: size,
+        contentType: response.ContentType ?? 'application/octet-stream',
+      };
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      throw unavailable();
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  protected async putFile(key: string, path: string, mime: string) {
+    this.validKey(key, 'photos/');
+    const { size } = await stat(path);
+    try {
+      await this.sdk().send(
+        new PutObjectCommand({
+          Bucket: this.options.bucket,
+          Key: key,
+          Body: createReadStream(path),
+          ContentType: mime,
+          ContentLength: size,
+          CacheControl: 'private, no-store',
+          IfNoneMatch: '*',
+        }),
+        { abortSignal: AbortSignal.timeout(120_000) }
+      );
+    } catch {
+      throw unavailable();
+    }
+  }
+  // Best effort: temp dirs of a crashed transcode older than an hour.
+  private async sweepVideoTemp() {
+    try {
+      const root = tmpdir();
+      for (const name of await readdir(root)) {
+        if (!name.startsWith(VIDEO_TEMP_PREFIX)) continue;
+        const path = join(root, name);
+        const info = await stat(path);
+        if (Date.now() - info.mtimeMs > 60 * 60_000)
+          await rm(path, { recursive: true, force: true });
+      }
+    } catch {
+      /* A later pass retries; never fail a job for the sweep. */
+    }
+  }
+  /**
+   * Worker-only video pipeline: ffprobe validation -> H.264/AAC MP4 transcode
+   * (metadata stripped, rotation applied) -> poster frame -> display/thumbnail
+   * WebP posters at the photo variant sizes. The original is not retained.
+   * Invalid input: 400 VIDEO_TOO_LONG / VIDEO_UNSUPPORTED, 422 TRANSCODE_FAILED
+   * (terminal); missing tools or storage errors: 503 (retried by the queue).
+   */
+  async processVideo(
+    stagingKey: string,
+    expectedMime: string,
+    expectedBytes: number,
+    uniqueFinalPrefix: string,
+    signal?: AbortSignal
+  ): Promise<MediaVariant[]> {
+    this.validKey(stagingKey, 'staging/');
+    this.validKey(uniqueFinalPrefix, 'photos/');
+    if (
+      !isVideoMime(expectedMime) ||
+      !Number.isSafeInteger(expectedBytes) ||
+      expectedBytes < 1 ||
+      expectedBytes > MAX_VIDEO_UPLOAD_BYTES
+    )
+      throw videoRejected('VIDEO_UNSUPPORTED');
+    let preset: string;
+    try {
+      preset = videoPreset();
+    } catch {
+      // A deployment setting, never the member's file (also checked at start).
+      throw videoToolsUnavailable();
+    }
+    if (this.videoProcessing >= 1)
+      throw new ServiceUnavailableException({ code: 'MEDIA_PROCESSING_BUSY' });
+    this.videoProcessing++;
+    const attempted: string[] = [];
+    let dir: string | undefined;
+    // Missing tools, shutdown, timeouts and kills (load/memory) are the
+    // environment's problem and retried; a tool rejecting the input is the
+    // file's problem (fileProblem).
+    const tool = async (
+      bin: string,
+      args: string[],
+      timeoutMs: number,
+      fileProblem: () => HttpException
+    ) => {
+      try {
+        return await runTool(bin, args, timeoutMs, 1024 * 1024, signal);
+      } catch (error) {
+        if (error instanceof ToolError) {
+          if (error.failure === 'spawn') throw videoToolsUnavailable();
+          if (error.failure === 'aborted') throw videoAborted();
+          if (error.failure === 'timeout' || error.failure === 'signal')
+            throw videoInterrupted();
+        }
+        throw fileProblem();
+      }
+    };
+    const unsupported = () => videoRejected('VIDEO_UNSUPPORTED');
+    const transcodeFailed = () => videoRejected('TRANSCODE_FAILED');
+    try {
+      await this.sweepVideoTemp();
+      dir = await mkdtemp(join(tmpdir(), VIDEO_TEMP_PREFIX));
+      const source = join(dir, 'source');
+      const output = join(dir, 'video.mp4');
+      const poster = join(dir, 'poster.png');
+      const downloaded = await this.downloadToFile(
+        stagingKey,
+        source,
+        expectedBytes
+      ).catch((error: unknown) => {
+        throw error instanceof BadRequestException
+          ? videoRejected('VIDEO_UNSUPPORTED')
+          : error;
+      });
+      if (
+        downloaded.bytes !== expectedBytes ||
+        downloaded.contentType.split(';')[0].trim() !== expectedMime
+      )
+        throw videoRejected('VIDEO_UNSUPPORTED');
+      let probe;
+      try {
+        probe = parseVideoProbe(
+          JSON.parse(
+            await tool(
+              ffprobePath(),
+              probeArgs(source),
+              PROBE_TIMEOUT_MS,
+              unsupported
+            )
+          )
+        );
+      } catch (error) {
+        if (error instanceof HttpException) throw error;
+        throw unsupported();
+      }
+      let result;
+      try {
+        await tool(
+          ffmpegPath(),
+          transcodeArgs(source, output, preset, probe.audioStream),
+          TRANSCODE_TIMEOUT_MS,
+          transcodeFailed
+        );
+        result = parseOutputProbe(
+          JSON.parse(
+            await tool(
+              ffprobePath(),
+              probeArgs(output),
+              PROBE_TIMEOUT_MS,
+              transcodeFailed
+            )
+          )
+        );
+        await tool(
+          ffmpegPath(),
+          posterArgs(output, poster, result.durationMs),
+          POSTER_TIMEOUT_MS,
+          transcodeFailed
+        );
+      } catch (error) {
+        if (error instanceof HttpException) throw error;
+        throw videoRejected('TRANSCODE_FAILED');
+      }
+      const { size: videoBytes } = await stat(output);
+      if (videoBytes < 1 || videoBytes > MAX_VIDEO_OUTPUT_BYTES)
+        throw videoRejected('TRANSCODE_FAILED');
+      let display: { data: Buffer; info: OutputInfo };
+      let thumbnail: { data: Buffer; info: OutputInfo };
+      try {
+        const frame = sharp(poster, { limitInputPixels: MAX_IMAGE_PIXELS });
+        display = await frame
+          .clone()
+          .resize({
+            width: 2560,
+            height: 2560,
+            fit: 'inside',
+            withoutEnlargement: true,
+          })
+          .webp({ quality: 85 })
+          .timeout({ seconds: 15 })
+          .toBuffer({ resolveWithObject: true });
+        thumbnail = await frame
+          .clone()
+          .resize({
+            width: 480,
+            height: 480,
+            fit: 'inside',
+            withoutEnlargement: true,
+          })
+          .webp({ quality: 78 })
+          .timeout({ seconds: 15 })
+          .toBuffer({ resolveWithObject: true });
+      } catch {
+        throw videoRejected('TRANSCODE_FAILED');
+      }
+      const videoKey = `${uniqueFinalPrefix}/video.mp4`;
+      attempted.push(videoKey);
+      await this.putFile(videoKey, output, 'video/mp4');
+      const variants: MediaVariant[] = [
+        {
+          kind: 'VIDEO',
+          capturedAt: probe.capturedAt,
+          durationMs: result.durationMs,
+          objectKey: videoKey,
+          mime: 'video/mp4',
+          width: result.width,
+          height: result.height,
+          bytes: videoBytes,
+        },
+      ];
+      for (const [kind, suffix, image] of [
+        ['DISPLAY', 'display.webp', display],
+        ['THUMBNAIL', 'thumbnail.webp', thumbnail],
+      ] as const) {
+        const objectKey = `${uniqueFinalPrefix}/${suffix}`;
+        attempted.push(objectKey);
+        await this.put(objectKey, image.data, 'image/webp');
+        variants.push({
+          kind,
+          objectKey,
+          mime: 'image/webp',
+          width: image.info.width,
+          height: image.info.height,
+          bytes: image.data.length,
+        });
+      }
+      return variants;
+    } catch (error) {
+      await this.cleanup(attempted);
+      throw error;
+    } finally {
+      this.videoProcessing--;
+      if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+  /**
+   * Short-lived signed GET for the transcoded MP4 (R2 serves Range requests).
+   * Callers check membership/visibility first; the URL is never logged.
+   */
+  async signedVideoUrl(
+    objectKey: string,
+    disposition: { download: false } | { download: true; filename: string }
+  ) {
+    this.validKey(objectKey, 'photos/');
+    if (!objectKey.endsWith('/video.mp4')) throw uploadInvalid();
+    if (
+      disposition.download &&
+      !/^[a-zA-Z0-9._-]{1,80}$/.test(disposition.filename)
+    )
+      throw uploadInvalid();
+    const url = await getSignedUrl(
+      this.sdk(),
+      new GetObjectCommand({
+        Bucket: this.options.bucket,
+        Key: objectKey,
+        ResponseContentType: 'video/mp4',
+        ResponseCacheControl: 'private, no-store',
+        ResponseContentDisposition: disposition.download
+          ? `attachment; filename="${disposition.filename}"`
+          : 'inline',
+      }),
+      { expiresIn: VIDEO_URL_TTL_SECONDS }
+    );
+    return {
+      url,
+      expiresAt: new Date(Date.now() + VIDEO_URL_TTL_SECONDS * 1000),
+    };
+  }
   async read(objectKey: string, maxBytes: number) {
     this.validKey(objectKey, 'photos/');
     if (
@@ -390,7 +747,7 @@ export class MediaStorageService implements OnModuleDestroy {
     if (!new RegExp(`^${uuid}$`).test(photoId)) throw uploadInvalid();
     const prefix = `photos/${photoId}/`;
     const allowed = new RegExp(
-      `^(?:staging/${uuid}|photos/${photoId}/${uuid}/(?:original\\.(?:jpg|png|webp)|display\\.webp|thumbnail\\.webp))$`
+      `^(?:staging/${uuid}|photos/${photoId}/${uuid}/(?:original\\.(?:jpg|png|webp)|video\\.mp4|display\\.webp|thumbnail\\.webp))$`
     );
     if (!objectKeys.every((key) => allowed.test(key))) throw uploadInvalid();
     const listed = await this.listPhotoKeys(prefix);

@@ -457,9 +457,10 @@ test('isolated PostgreSQL: admin notices, inquiries, reports and audited content
           await get('/v1/admin/notices?status=PUBLISHED&limit=50').expect(200)
         ).body.items.find((item: { id: string }) => item.id === scheduledId);
         assert.equal(scheduled.scheduled, true);
+        // On the app clock, the clock that writes and compares publishedAt.
         await owner.query(
-          `UPDATE woori.notices SET "publishedAt"=now()-interval '1 minute' WHERE id=$1`,
-          [scheduledId]
+          'UPDATE woori.notices SET "publishedAt"=$2 WHERE id=$1',
+          [scheduledId, new Date(Date.now() - MINUTE)]
         );
         await member(scheduledId).expect(200);
         // Archive hides; archiving again is a no-op; publishing again restores.
@@ -817,13 +818,16 @@ test('isolated PostgreSQL: admin notices, inquiries, reports and audited content
           200
         );
         assert.equal(photoDetail.body.detail, '부적절한 사진');
+        // Exact shape; OpenAPI 0.22.0 added mediaKind (W07-3).
         assert.deepEqual(Object.keys(photoDetail.body.target).sort(), [
           'albumId',
           'albumTitle',
+          'mediaKind',
           'photoId',
           'status',
           'uploadedAt',
         ]);
+        assert.equal(photoDetail.body.target.mediaKind, 'PHOTO');
         assert.equal(photoDetail.body.target.albumTitle, albumTitle);
         assert.equal(photoDetail.body.target.status, 'READY');
         const commentDetail = await get(`/v1/admin/reports/${rComment}`).expect(

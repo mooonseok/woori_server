@@ -1,7 +1,7 @@
 {
   "name": "woori_server",
   "product": "우리",
-  "status": "admin-operations-implemented-acceptance-pending",
+  "status": "family-beta-prep-implemented-deploy-pending",
   "plans": "/Users/parkmoonseok/.Codex/projects/woori_server/plans",
   "sharedPlan": "/Users/parkmoonseok/.Codex/projects/woori/plans/00-product-plan.md",
   "implemented": [
@@ -48,7 +48,6 @@
   ],
   "notImplemented": [
     "production Supabase/Railway/R2 provisioning and deployment",
-    "mail outbox/retries",
     "native refresh tokens",
     "production backup and restore validation",
     "native FCM/APNs subscriptions and dispatch, upload/reaction push bundling",
@@ -61,14 +60,22 @@
     "server-side album search/sort and album pagination beyond 50; taken-date sort is demo-only",
     "group join approval and join notifications (enum/preference only)",
     "admin group mutation and ownership transfer (suspended group owner limitation)",
-    "mail delivery metrics (W07 mail outbox)",
-    "audit-log, report and inquiry retention periods (undecided)"
+    "audit-log, report and inquiry retention periods (undecided)",
+    "production provisioning and HTTPS deployment acceptance (W07)",
+    "join notifications, join approval, memory pushes, manual album cover, server album search/taken-date sort (after beta)"
   ],
   "deployment": {
     "api": "Railway paid; Serverless off",
     "worker": "Railway paid; separate service; Serverless off",
     "database": "Supabase Pro PostgreSQL",
-    "objects": "Cloudflare R2 Standard private buckets"
+    "objects": "Cloudflare R2 Standard private buckets",
+    "web": "Cloudflare Pages static hosting for apps/web (woori.stream) and apps/admin (admin.woori.stream)",
+    "region": "Singapore for Railway API/worker and Supabase (Railway has no Seoul region)",
+    "domain": "woori.stream (Cloudflare Registrar/DNS): web woori.stream, admin admin.woori.stream, API api.woori.stream",
+    "mail": "Resend from the mail.woori.stream subdomain with SPF/DKIM/DMARC",
+    "backup": "Supabase daily backups (7 days) + weekly R2 copy to a separate backup bucket; monthly restore drill; RPO 24 h, RTO half a day; no PITR",
+    "costCap": "USD 60/month with a usage alert at USD 45",
+    "status": "decided 2026-10-16; not provisioned"
   },
   "entryPoints": {
     "api": "dist/src/main.js",
@@ -84,7 +91,7 @@
     "authorization": "RLS allows server runtime role across granted rows; per-user group isolation is enforced in API membership queries",
     "runtimeGrants": "prisma/runtime-grants.sql",
     "pendingMigration": null,
-    "latestLocalMigration": "20261028000000_admin_member_operations (W06 migrations 20261026-20261028 and runtime grants applied to woori_dev with explicit user approval on 2026-10-16 after a pg_dump backup; remote not applied)"
+    "latestLocalMigration": "20261031000000_mail_outbox_monitoring (W07 migrations 20261029-20261031 and runtime grants applied to woori_dev with explicit user approval on 2026-10-16 after a pg_dump backup; remote not applied)"
   },
   "runtimeConfiguration": {
     "PORT": "default 3001",
@@ -109,7 +116,9 @@
     "pushKeySetup": "pnpm push:keys mailto:operator@example.com creates NEW gitignored .env.web-push.local mode0600; copy values privately to API/worker environment",
     "pushDelivery": "worker polls each10s; fanout up to20 and deliveries up to20 eachpass; notification24h expiry, provider TTL300s, five networkattempts, quietretry60s; provider acceptance does not prove device receipt",
     "ADMIN_WEB_ORIGIN": "exact admin web origin (local http://localhost:3002); must also be listed in CORS_ALLOWED_ORIGINS; member routes reject it unless equal to WEB_ORIGIN; empty → /v1/admin answers 503 ADMIN_NOT_CONFIGURED",
-    "ADMIN_TOTP_ENCRYPTION_KEY": "base64 32-byte AES-256-GCM key for admin TOTP secrets; create once with pnpm admin:keys (.env.admin.local, never printed); changing it requires admin:reset-mfa"
+    "ADMIN_TOTP_ENCRYPTION_KEY": "base64 32-byte AES-256-GCM key for admin TOTP secrets; create once with pnpm admin:keys (.env.admin.local, never printed); changing it requires admin:reset-mfa",
+    "MAIL_OUTBOX_KEY": "base64 32-byte AES-256-GCM key for the mail outbox payload; pnpm mail:keys writes gitignored .env.mail.local; same value for API and worker; required (readyz fails without it)",
+    "VIDEO_X264_PRESET": "optional ffmpeg x264 preset from an allowlist (default veryfast); worker refuses to start on other values"
   },
   "localSetupPlan": "/Users/parkmoonseok/.Codex/projects/woori/plans/05-local-auth-setup.md",
   "groupManagement": {
@@ -190,5 +199,12 @@
     "audit": "Append-only (runtime SELECT/INSERT); metadata whitelist of enums/UUIDs; no-op mutations returning personal data write *_VIEWED.",
     "grants": "admin_accounts SELECT + 6 login-state columns; admin_sessions SELECT/INSERT + 7-column UPDATE; admin_audit_logs SELECT/INSERT; notices INSERT + column UPDATE; inquiries/content_reports column UPDATE.",
     "remaining": "User must set ADMIN_WEB_ORIGIN/ADMIN_TOTP_ENCRYPTION_KEY and create the first admin; retention periods undecided; suspended group owner limitation."
+  },
+  "familyBeta": {
+    "scope": "W07 on feature/family-beta-ops, OpenAPI 0.25.0",
+    "notifications": "Upload bundles per uploader+album 10-min window (first READY anchor, ~2-min delayed push, follow-up replaces by tag); reaction bundles per photo 30-min; quiet-hours release one push per bundle; partial unique index keeps one waiting delivery per notification/installation.",
+    "albums": "Cursor pagination (30, ALBUM_CURSOR_INVALID), KST startDate/endDate from visible READY media, coverMediaKind, videoCount.",
+    "video": "mp4/mov ≤60.5 s and ≤200 MB, ffprobe validation, worker ffmpeg H.264/AAC ≤1080p CRF 23 faststart with metadata stripped, WebP posters, original deleted, signed play/download URLs (600 s), admin audited view, separate media loop with one video per pass, 15-min lease, size-proportional upload window (10–60 min).",
+    "operations": "Encrypted mail outbox (token-atomic, retries, Idempotency-Key, payload wiped), worker heartbeats with busy job and queue-lag admin metrics, scripts/r2-backup.mjs (dry-run default, manifest-based prune guards), production config validation, deploy/railway.*.json, deploy/worker.Dockerfile, deploy/r2-cors.production.json."
   }
 }

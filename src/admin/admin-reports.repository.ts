@@ -90,6 +90,7 @@ async function targetSummary(tx: Tx, row: ReportRow) {
         albumId: true,
         status: true,
         createdAt: true,
+        mediaKind: true,
         album: { select: { title: true } },
       },
     });
@@ -99,6 +100,7 @@ async function targetSummary(tx: Tx, row: ReportRow) {
           albumId: photo.albumId,
           albumTitle: photo.album.title,
           status: photo.status,
+          mediaKind: photo.mediaKind,
           uploadedAt: photo.createdAt,
         }
       : null;

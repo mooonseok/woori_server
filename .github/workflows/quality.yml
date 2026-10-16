@@ -30,6 +30,10 @@ jobs:
       - run: pnpm policy:ci
         env:
           POLICY_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      - name: Install ffmpeg (video worker and its integration tests)
+        run:
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends
+          ffmpeg
       - name: Prepare isolated CI database
         run: |
           node scripts/policy/prepare-ci-env.mjs
