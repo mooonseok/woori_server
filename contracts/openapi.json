@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "우리 인증·그룹·초대·앨범·사진 API",
-    "version": "0.25.0",
-    "description": "현재 구현된 Nest API 계약. 모든 응답은 Cache-Control: no-store이다. 브라우저 요청은 credentials: include를 사용한다. 운영 세션은 HttpOnly·Secure·SameSite=Lax인 __Host-woori_session 쿠키, 비운영은 woori_session 쿠키이다. 모든 변경 메서드는 허용 목록과 정확히 일치하는 Origin 및 X-Woori-Request: 1을 요구하며 본문은 application/json을 사용한다. 알 수 없는 요청 필드는 400으로 거절한다. API는 서버 프레임워크 전역 prefix 없이 아래 경로를 직접 제공한다. 회원 한정 앨범 목록 조회는 실제 DB에 연결되어 있다. 앨범 생성과 비공개 R2 사진 업로드·조회가 구현되어 있다. 업로드는 허가→R2 PUT→완료 순서이며 완료 시 서버에서 파일을 검증하고 파생본을 생성한다. 사진 콘텐츠는 매 요청 현재 멤버십을 확인하며 private, no-store이다. 웹 푸시 구독·세션 연결·Outbox 발송 및 수신 직전 표시 권한 검사가 구현되어 있다. 네이티브 푸시는 포함하지 않는다. 일반/위치 댓글과 사용자당 사진별 이모지 반응을 DB에 저장한다. 모든 조회 및 변경은 현재 활성 멤버십, 활성 그룹, 삭제되지 않은 앨범과 READY 사진을 검사한다. 댓글은 작성자만 수정하고 작성자 또는 그룹장만 삭제한다. 이름·이메일 계정 복구, 일회용 비밀번호 재설정과 현재 계정 이름 수정이 구현되어 있다. 그룹 구성원 조회·이름 수정·탈퇴·내보내기·소유권 이전·비동기 그룹 삭제가 구현되어 있다. 촬영일 출처·수동 수정, KST 날짜 기반 개인 추억 조회·숨김·복원이 구현되어 있다. 추억 푸시는 자동 발송하지 않는다. 공지사항(게시된 항목 읽기 전용)과 회원 본인 문의 접수·조회가 구현되어 있으며 공지 작성·게시와 문의 답변·상태 변경은 관리자 API에서 제공한다. 사진·댓글·회원 신고 접수와 본인 신고 처리 상태 조회가 구현되어 있으며 신고는 서비스 운영자만 처리하고 알림·자동 숨김은 없다. 회원 개인 차단(나에게만 숨김)이 구현되어 있으며 차단한 회원의 사진·댓글·반응·알림은 차단한 사람에게만 숨겨지고 멤버십·역할은 바뀌지 않는다. 서비스 운영자(관리자) 인증이 구현되어 있다: 회원과 분리된 관리자 계정·세션·쿠키(__Host-woori_admin_session/woori_admin_session, SameSite=Strict)를 사용하고 비밀번호 + 인증 앱 TOTP 2단계 인증, pre-MFA 10분·절대 8시간·유휴 30분 만료, 민감 작업 전 10분 내 재인증, 연속 실패 잠금과 추가 전용 감사 로그를 제공한다. 회원 세션은 /v1/admin/**을, 관리자 세션은 회원 경로를 인가하지 않는다. /v1/admin/**의 모든 요청(GET 포함)은 X-Woori-Request: 1을 요구하고, 변경 요청은 ADMIN_WEB_ORIGIN과 정확히 일치하는 Origin도 요구한다. Origin이 있으면 GET도 ADMIN_WEB_ORIGIN이어야 하며 회원 웹 origin은 거절한다. 반대로 회원 경로는 ADMIN_WEB_ORIGIN을 거절하고 CORS도 허용하지 않는다(WEB_ORIGIN과 같은 값이면 예외). CORS는 경로별로 /v1/admin/**에는 ADMIN_WEB_ORIGIN만, 그 밖에는 ADMIN_WEB_ORIGIN을 뺀 CORS_ALLOWED_ORIGINS만 허용한다. ADMIN_WEB_ORIGIN 또는 ADMIN_TOTP_ENCRYPTION_KEY가 없으면 모든 관리자 경로가 503 ADMIN_NOT_CONFIGURED이다. 관리자 계정 생성·활성/비활성·MFA 초기화는 서버 CLI(소유자 DB 연결)로만 가능하며 API로 만들 수 없다. 관리자 공지 작성·예약·보관, 문의 답변·상태 변경, 신고 처리(검토·기각·콘텐츠 삭제·회원 정지, 같은 대상의 열린 신고 함께 처리)가 구현되어 있다. 관리자는 모든 회원 사진·댓글을 사유 + 최근 재인증 + 감사 기록을 거쳐서만 볼 수 있고 사진은 메타데이터를 제거한 표시용 파생본만 제공한다. 회원 정지는 본인 접근만 막고 공유 콘텐츠·멤버십은 유지한다. 관리자 회원 목록·상세·이름 변경·정지·정지 해제·계정 삭제, 그룹·앨범 사진 메타데이터 조회와 운영 지표가 구현되어 있다. 정지된 회원은 비밀번호가 맞으면 로그인 시 403 ACCOUNT_SUSPENDED를 받고 기존 세션·푸시는 폐기되며 공유 콘텐츠는 유지된다. 정지된 회원은 그룹 멤버 목록과 인원 수에 그대로 포함되고(정지 여부는 회원에게 노출하지 않음) 다른 회원이 신고·차단할 수 있으며 정지 전 활동으로 생긴 다른 회원의 알림도 유지된다. 그룹장이 내보낼 수 있지만 그룹장으로 지정될 수는 없다. 정지 계정도 아이디 찾기·비밀번호 재설정은 할 수 있지만 상태는 바뀌지 않고 로그인은 계속 403이며, 로그인할 수 없어 스스로 탈퇴할 수 없으므로 운영자 계정 삭제로 처리한다. 알려진 한계: 정지된 회원이 그룹장이면 그룹은 계속 쓸 수 있지만 그룹장 관리 기능(이름 변경·내보내기·이전·초대·삭제)은 정지 해제 전까지 쓸 수 없고, 관리자 그룹장 변경 기능은 아직 없다. 관리자 그룹 변경 기능은 제공하지 않는다. 0.20.0: 업로드·반응 알림 묶음. 새 사진 알림은 수신자별로 같은 업로더·같은 앨범의 사진을 첫 사진 시각부터 10분 창으로 묶고(창은 첫 사진에 고정, 이후 사진으로 연장하지 않음) 첫 사진 약 2분 뒤 한 번 푸시한다. 반응 알림은 같은 사진의 반응을 첫 반응부터 30분 창으로 묶고 약 1분 뒤 푸시한다. 댓글·위치 댓글 알림은 사건마다 하나이며 즉시 푸시한다. 묶음은 알림 행 하나이며 같은 tag(woori-<notificationId>)로 OS 알림을 교체한다. 방해 금지 해제 시 묶음(알림)·기기마다 한 번만 보낸다. 0.21.0: 앨범 목록은 limit(1..50, 기본 30)·불투명 cursor로 나눠 불러오며 nextCursor를 돌려준다(최근 생성 순, 같으면 id 순). 잘못되거나 오래된 cursor는 400 ALBUM_CURSOR_INVALID. 앨범에는 조회자에게 보이는 READY 사진의 실제 촬영일(수동 → EXIF → 업로드일, 한국 날짜) 최소~최대인 startDate·endDate(YYYY-MM-DD, 없으면 null)가 있다. 0.22.0: 동영상 업로드(W07-3). video/mp4·video/quicktime(H.264/HEVC) 1개당 200MB·60초(60.5초 허용) 이하를 사진과 같은 티켓 → R2 PUT → process 큐로 받는다. 워커가 ffprobe로 다시 검증하고 ffmpeg로 H.264(yuv420p, 긴 변 1920·짧은 변 1080 이하, CRF 23, 최대 60fps)·AAC MP4(faststart)로 변환하며 위치·기기 등 메타데이터를 지운다. 변환에 성공하면 원본은 저장하지 않고 변환본과 포스터(사진과 같은 display·thumbnail 크기 WebP)만 저장·용량 계산한다. 재생·다운로드는 권한 확인 후 10분짜리 서명 URL(Range 지원, 다운로드는 attachment)로 제공한다. 0.23.0: 운영 준비(W07-4). 인증·복구·이메일 변경 메일은 토큰과 같은 트랜잭션에서 메일 outbox에 암호화(AES-256-GCM)해 기록하고, API가 커밋 직후 1회 보내며 워커가 지수 백오프(30초→15분, 최대 6회)로 재시도한다. 공급자 Idempotency-Key로 시간 초과 뒤 재시도해도 한 통만 보낸다. 토큰이 소비·교체·만료되거나 계정이 탈퇴하면 보내지 않으며 발송·실패·만료 후 암호문을 지운다. 관리자 지표에 메일 outbox·큐 지연·워커 heartbeat가 추가된다. 운영(NODE_ENV=production)은 https origin·TRUST_PROXY_HOPS=1·Resend 발신 도메인·MAIL_OUTBOX_KEY·R2 설정이 없으면 시작하지 않는다. 0.24.0: 알림 대상(/target)에 대상 미디어 종류 mediaKind, 앨범에 자동 커버의 종류 coverMediaKind를 추가한다(동영상 재생 표시용). 0.25.0: 운영 보강(W07-3·4 리뷰). 관리자 지표 워커 인스턴스에 진행 중 작업 busyJob·busySeconds를 추가하고 heartbeat는 처리 회차와 별개로 15초마다 남긴다. 동영상 업로드 티켓(PUT URL·예약)은 크기에 비례해 1 Mbit/s 전송 시간 + 10분(10~60분, 200MB 약 38분) 유효하다. 변환 시간 초과·외부 종료는 재시도하고 세 번째 시도에서도 그러면 TRANSCODE_FAILED, 허용 목록 밖 오디오만 있는 동영상은 소리 없이 변환한다."
+    "version": "0.26.0",
+    "description": "현재 구현된 Nest API 계약. 모든 응답은 Cache-Control: no-store이다. 브라우저 요청은 credentials: include를 사용한다. 운영 세션은 HttpOnly·Secure·SameSite=Lax인 __Host-woori_session 쿠키, 비운영은 woori_session 쿠키이다. 모든 변경 메서드는 허용 목록과 정확히 일치하는 Origin 및 X-Woori-Request: 1을 요구하며 본문은 application/json을 사용한다. 알 수 없는 요청 필드는 400으로 거절한다. API는 서버 프레임워크 전역 prefix 없이 아래 경로를 직접 제공한다. 회원 한정 앨범 목록 조회는 실제 DB에 연결되어 있다. 앨범 생성과 비공개 R2 사진 업로드·조회가 구현되어 있다. 업로드는 허가→R2 PUT→완료 순서이며 완료 시 서버에서 파일을 검증하고 파생본을 생성한다. 사진 콘텐츠는 매 요청 현재 멤버십을 확인하며 private, no-store이다. 웹 푸시 구독·세션 연결·Outbox 발송 및 수신 직전 표시 권한 검사가 구현되어 있다. 네이티브 푸시는 포함하지 않는다. 일반/위치 댓글과 사용자당 사진별 이모지 반응을 DB에 저장한다. 모든 조회 및 변경은 현재 활성 멤버십, 활성 그룹, 삭제되지 않은 앨범과 READY 사진을 검사한다. 댓글은 작성자만 수정하고 작성자 또는 그룹장만 삭제한다. 이름·이메일 계정 복구, 일회용 비밀번호 재설정과 현재 계정 이름 수정이 구현되어 있다. 그룹 구성원 조회·이름 수정·탈퇴·내보내기·소유권 이전·비동기 그룹 삭제가 구현되어 있다. 촬영일 출처·수동 수정, KST 날짜 기반 개인 추억 조회·숨김·복원이 구현되어 있다. 추억 푸시는 자동 발송하지 않는다. 공지사항(게시된 항목 읽기 전용)과 회원 본인 문의 접수·조회가 구현되어 있으며 공지 작성·게시와 문의 답변·상태 변경은 관리자 API에서 제공한다. 사진·댓글·회원 신고 접수와 본인 신고 처리 상태 조회가 구현되어 있으며 신고는 서비스 운영자만 처리하고 알림·자동 숨김은 없다. 회원 개인 차단(나에게만 숨김)이 구현되어 있으며 차단한 회원의 사진·댓글·반응·알림은 차단한 사람에게만 숨겨지고 멤버십·역할은 바뀌지 않는다. 서비스 운영자(관리자) 인증이 구현되어 있다: 회원과 분리된 관리자 계정·세션·쿠키(__Host-woori_admin_session/woori_admin_session, SameSite=Strict)를 사용하고 비밀번호 + 인증 앱 TOTP 2단계 인증, pre-MFA 10분·절대 8시간·유휴 30분 만료, 민감 작업 전 10분 내 재인증, 연속 실패 잠금과 추가 전용 감사 로그를 제공한다. 회원 세션은 /v1/admin/**을, 관리자 세션은 회원 경로를 인가하지 않는다. /v1/admin/**의 일반 요청(GET 포함)은 X-Woori-Request: 1을 요구하고(동영상 content GET/HEAD는 현재 세션 바인딩 티켓과 정확한 Origin을 대신 요구), 변경 요청은 ADMIN_WEB_ORIGIN과 정확히 일치하는 Origin도 요구한다. Origin이 있으면 GET도 ADMIN_WEB_ORIGIN이어야 하며 회원 웹 origin은 거절한다. 반대로 회원 경로는 ADMIN_WEB_ORIGIN을 거절하고 CORS도 허용하지 않는다(WEB_ORIGIN과 같은 값이면 예외). CORS는 경로별로 /v1/admin/**에는 ADMIN_WEB_ORIGIN만, 그 밖에는 ADMIN_WEB_ORIGIN을 뺀 CORS_ALLOWED_ORIGINS만 허용한다. ADMIN_WEB_ORIGIN 또는 ADMIN_TOTP_ENCRYPTION_KEY가 없으면 모든 관리자 경로가 503 ADMIN_NOT_CONFIGURED이다. 관리자 계정 생성·활성/비활성·MFA 초기화는 서버 CLI(소유자 DB 연결)로만 가능하며 API로 만들 수 없다. 관리자 공지 작성·예약·보관, 문의 답변·상태 변경, 신고 처리(검토·기각·콘텐츠 삭제·회원 정지, 같은 대상의 열린 신고 함께 처리)가 구현되어 있다. 관리자는 모든 회원 사진·댓글을 사유 + 최근 재인증 + 감사 기록을 거쳐서만 볼 수 있고 사진은 메타데이터를 제거한 표시용 파생본만 제공한다. 회원 정지는 본인 접근만 막고 공유 콘텐츠·멤버십은 유지한다. 관리자 회원 목록·상세·이름 변경·정지·정지 해제·계정 삭제, 그룹·앨범 사진 메타데이터 조회와 운영 지표가 구현되어 있다. 정지된 회원은 비밀번호가 맞으면 로그인 시 403 ACCOUNT_SUSPENDED를 받고 기존 세션·푸시는 폐기되며 공유 콘텐츠는 유지된다. 정지된 회원은 그룹 멤버 목록과 인원 수에 그대로 포함되고(정지 여부는 회원에게 노출하지 않음) 다른 회원이 신고·차단할 수 있으며 정지 전 활동으로 생긴 다른 회원의 알림도 유지된다. 그룹장이 내보낼 수 있지만 그룹장으로 지정될 수는 없다. 정지 계정도 아이디 찾기·비밀번호 재설정은 할 수 있지만 상태는 바뀌지 않고 로그인은 계속 403이며, 로그인할 수 없어 스스로 탈퇴할 수 없으므로 운영자 계정 삭제로 처리한다. 알려진 한계: 정지된 회원이 그룹장이면 그룹은 계속 쓸 수 있지만 그룹장 관리 기능(이름 변경·내보내기·이전·초대·삭제)은 정지 해제 전까지 쓸 수 없고, 관리자 그룹장 변경 기능은 아직 없다. 관리자 그룹 변경 기능은 제공하지 않는다. 0.20.0: 업로드·반응 알림 묶음. 새 사진 알림은 수신자별로 같은 업로더·같은 앨범의 사진을 첫 사진 시각부터 10분 창으로 묶고(창은 첫 사진에 고정, 이후 사진으로 연장하지 않음) 첫 사진 약 2분 뒤 한 번 푸시한다. 반응 알림은 같은 사진의 반응을 첫 반응부터 30분 창으로 묶고 약 1분 뒤 푸시한다. 댓글·위치 댓글 알림은 사건마다 하나이며 즉시 푸시한다. 묶음은 알림 행 하나이며 같은 tag(woori-<notificationId>)로 OS 알림을 교체한다. 방해 금지 해제 시 묶음(알림)·기기마다 한 번만 보낸다. 0.21.0: 앨범 목록은 limit(1..50, 기본 30)·불투명 cursor로 나눠 불러오며 nextCursor를 돌려준다(최근 생성 순, 같으면 id 순). 잘못되거나 오래된 cursor는 400 ALBUM_CURSOR_INVALID. 앨범에는 조회자에게 보이는 READY 사진의 실제 촬영일(수동 → EXIF → 업로드일, 한국 날짜) 최소~최대인 startDate·endDate(YYYY-MM-DD, 없으면 null)가 있다. 0.22.0: 동영상 업로드(W07-3). video/mp4·video/quicktime(H.264/HEVC) 1개당 200MB·60초(60.5초 허용) 이하를 사진과 같은 티켓 → R2 PUT → process 큐로 받는다. 워커가 ffprobe로 다시 검증하고 ffmpeg로 H.264(yuv420p, 긴 변 1920·짧은 변 1080 이하, CRF 23, 최대 60fps)·AAC MP4(faststart)로 변환하며 위치·기기 등 메타데이터를 지운다. 변환에 성공하면 원본은 저장하지 않고 변환본과 포스터(사진과 같은 display·thumbnail 크기 WebP)만 저장·용량 계산한다. 재생·다운로드는 0.26.0부터 API 인증 스트림(Range 지원, 다운로드는 attachment)으로 제공한다. 0.23.0: 운영 준비(W07-4). 인증·복구·이메일 변경 메일은 토큰과 같은 트랜잭션에서 메일 outbox에 암호화(AES-256-GCM)해 기록하고, API가 커밋 직후 1회 보내며 워커가 지수 백오프(30초→15분, 최대 6회)로 재시도한다. 공급자 Idempotency-Key로 시간 초과 뒤 재시도해도 한 통만 보낸다. 토큰이 소비·교체·만료되거나 계정이 탈퇴하면 보내지 않으며 발송·실패·만료 후 암호문을 지운다. 관리자 지표에 메일 outbox·큐 지연·워커 heartbeat가 추가된다. 운영(NODE_ENV=production)은 https origin·TRUST_PROXY_HOPS=1·Resend 발신 도메인·MAIL_OUTBOX_KEY·R2 설정이 없으면 시작하지 않는다. 0.24.0: 알림 대상(/target)에 대상 미디어 종류 mediaKind, 앨범에 자동 커버의 종류 coverMediaKind를 추가한다(동영상 재생 표시용). 0.25.0: 운영 보강(W07-3·4 리뷰). 관리자 지표 워커 인스턴스에 진행 중 작업 busyJob·busySeconds를 추가하고 heartbeat는 처리 회차와 별개로 15초마다 남긴다. 동영상 업로드 티켓(PUT URL·예약)은 크기에 비례해 1 Mbit/s 전송 시간 + 10분(10~60분, 200MB 약 38분) 유효하다. 변환 시간 초과·외부 종료는 재시도하고 세 번째 시도에서도 그러면 TRANSCODE_FAILED, 허용 목록 밖 오디오만 있는 동영상은 소리 없이 변환한다. 0.26.0: 동영상은 R2 서명 GET 대신 API 인증 스트림으로 제공한다. 모든 GET/HEAD/Range마다 현재 권한을 검사한다. 관리자 미디어 GET/HEAD 한 경로만 X-Woori-Request 대신 서버 서명·현재 세션 바인딩 티켓과 정확한 ADMIN_WEB_ORIGIN을 요구하며 재인증·MFA를 매번 검사한다."
   },
   "tags": [
     {
@@ -4015,8 +4015,8 @@
     "/v1/groups/{groupId}/albums/{albumId}/photos/{photoId}/video": {
       "get": {
         "operationId": "getPhotoVideo",
-        "summary": "동영상 재생·다운로드용 서명 URL",
-        "description": "현재 ACTIVE 그룹 멤버십, 그룹·앨범·사진 관계, READY 동영상, 조회자가 업로더를 차단하지 않았는지를 확인한 뒤 변환본 MP4의 10분 서명 URL을 돌려준다(R2가 Range를 처리). purpose=download는 attachment로 내려받는다(원본은 저장하지 않으므로 변환본). 사진·없음·권한 없음·차단은 404 PHOTO_NOT_FOUND이며 URL을 만들지 않는다. 포스터는 content?variant=thumbnail|display.",
+        "summary": "동영상 API 재생·다운로드 경로",
+        "description": "현재 활성 멤버십·관계·READY 동영상·차단을 검사한 뒤 API 상대 경로를 반환한다. URL 단독으로 접근할 수 없으며 content GET/HEAD마다 세션·권한을 다시 검사한다. expiresAt은 메타데이터 갱신 시각이며 URL 자체 권한을 부여하지 않는다.",
         "tags": ["photos"],
         "security": [
           {
@@ -9886,7 +9886,11 @@
             "DevelopmentAdminSession": []
           }
         ],
-        "parameters": [{ "$ref": "#/components/parameters/WooriRequest" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WooriRequest"
+          }
+        ],
         "responses": {
           "200": {
             "description": "성공.",
@@ -10299,7 +10303,9 @@
           }
         ],
         "parameters": [
-          { "$ref": "#/components/parameters/WooriRequest" },
+          {
+            "$ref": "#/components/parameters/WooriRequest"
+          },
           {
             "name": "cursor",
             "in": "query",
@@ -10381,7 +10387,9 @@
           }
         ],
         "parameters": [
-          { "$ref": "#/components/parameters/WooriRequest" },
+          {
+            "$ref": "#/components/parameters/WooriRequest"
+          },
           {
             "name": "status",
             "in": "query",
@@ -10532,7 +10540,9 @@
           }
         ],
         "parameters": [
-          { "$ref": "#/components/parameters/WooriRequest" },
+          {
+            "$ref": "#/components/parameters/WooriRequest"
+          },
           {
             "name": "noticeId",
             "in": "path",
@@ -10911,7 +10921,9 @@
           }
         ],
         "parameters": [
-          { "$ref": "#/components/parameters/WooriRequest" },
+          {
+            "$ref": "#/components/parameters/WooriRequest"
+          },
           {
             "name": "status",
             "in": "query",
@@ -11010,7 +11022,9 @@
           }
         ],
         "parameters": [
-          { "$ref": "#/components/parameters/WooriRequest" },
+          {
+            "$ref": "#/components/parameters/WooriRequest"
+          },
           {
             "name": "inquiryId",
             "in": "path",
@@ -11292,7 +11306,9 @@
           }
         ],
         "parameters": [
-          { "$ref": "#/components/parameters/WooriRequest" },
+          {
+            "$ref": "#/components/parameters/WooriRequest"
+          },
           {
             "name": "status",
             "in": "query",
@@ -11390,7 +11406,9 @@
           }
         ],
         "parameters": [
-          { "$ref": "#/components/parameters/WooriRequest" },
+          {
+            "$ref": "#/components/parameters/WooriRequest"
+          },
           {
             "name": "reportId",
             "in": "path",
@@ -11958,7 +11976,7 @@
       "post": {
         "operationId": "adminViewVideo",
         "summary": "회원 동영상 감사 열람(변환본)",
-        "description": "사진 열람과 같은 조건(사유 5~500자, 최근 10분 내 재인증, 관리자당 1시간 120회 합산). READY 동영상, 또는 삭제 중이고 저장소 정리가 끝나지 않은 동영상만 가능하며 그 밖(사진 포함)은 404 ADMIN_PHOTO_NOT_FOUND. 감사 ADMIN_VIDEO_VIEWED { photoId, groupId }와 사유를 먼저 기록한 뒤 변환본 MP4의 10분 서명 URL(inline)을 돌려준다. 포스터는 POST /v1/admin/photos/{photoId}/view. 원본은 저장하지 않는다.",
+        "description": "사유·최근 재인증·MFA·열람 한도를 검사하고 ADMIN_VIDEO_VIEWED 감사를 먼저 저장한 뒤 현재 관리자 세션·사진·감사 기록에 바인딩된 5분 이하 티켓 API 경로를 반환한다. GET/HEAD/Range마다 현재 세션·MFA·재인증·콘텐츠 상태와 티켓을 다시 검사한다. 쿠키 없이 URL만으로는 접근 불가.",
         "tags": ["admin"],
         "security": [
           {
@@ -12221,7 +12239,9 @@
           }
         ],
         "parameters": [
-          { "$ref": "#/components/parameters/WooriRequest" },
+          {
+            "$ref": "#/components/parameters/WooriRequest"
+          },
           {
             "name": "query",
             "in": "query",
@@ -12313,7 +12333,9 @@
           }
         ],
         "parameters": [
-          { "$ref": "#/components/parameters/WooriRequest" },
+          {
+            "$ref": "#/components/parameters/WooriRequest"
+          },
           {
             "name": "userId",
             "in": "path",
@@ -12874,7 +12896,9 @@
           }
         ],
         "parameters": [
-          { "$ref": "#/components/parameters/WooriRequest" },
+          {
+            "$ref": "#/components/parameters/WooriRequest"
+          },
           {
             "name": "query",
             "in": "query",
@@ -12966,7 +12990,9 @@
           }
         ],
         "parameters": [
-          { "$ref": "#/components/parameters/WooriRequest" },
+          {
+            "$ref": "#/components/parameters/WooriRequest"
+          },
           {
             "name": "groupId",
             "in": "path",
@@ -13050,7 +13076,9 @@
           }
         ],
         "parameters": [
-          { "$ref": "#/components/parameters/WooriRequest" },
+          {
+            "$ref": "#/components/parameters/WooriRequest"
+          },
           {
             "name": "groupId",
             "in": "path",
@@ -13162,7 +13190,11 @@
             "DevelopmentAdminSession": []
           }
         ],
-        "parameters": [{ "$ref": "#/components/parameters/WooriRequest" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WooriRequest"
+          }
+        ],
         "responses": {
           "200": {
             "description": "성공.",
@@ -13194,6 +13226,568 @@
           },
           "503": {
             "$ref": "#/components/responses/AdminError503"
+          }
+        }
+      }
+    },
+    "/v1/groups/{groupId}/albums/{albumId}/photos/{photoId}/video/content": {
+      "get": {
+        "operationId": "getMemberVideoContent",
+        "summary": "인증된 동영상 스트림",
+        "description": "요청마다 현재 활성 세션·그룹멤버십·차단·READY 상태를 검사한다. 연결 종료 시 R2 스트림 중단. URL만 보유하면 접근 불가.",
+        "tags": ["photos"],
+        "security": [
+          {
+            "ProductionSession": []
+          },
+          {
+            "DevelopmentSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "albumId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "photoId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "purpose",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["play", "download"],
+              "default": "play"
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "단일 bytes 범위만 지원. open/suffix 가능, 다중·잘못된·초과 범위 416."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "전체 MP4(HEAD는 본문 없음).",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "private, no-store"
+              },
+              "Content-Length": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "실제 응답 바이트 길이"
+              },
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "bytes"
+              },
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "inline 또는 attachment"
+              }
+            },
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "부분 MP4. Content-Range와 Content-Length 반환.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "private, no-store"
+              },
+              "Content-Length": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "실제 응답 바이트 길이"
+              },
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "bytes"
+              },
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "inline 또는 attachment"
+              }
+            },
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "현재 세션 없음."
+          },
+          "403": {
+            "description": "관리자 Origin·티켓·MFA·재인증 거부."
+          },
+          "404": {
+            "description": "대상 없거나 접근 권한 없음."
+          },
+          "416": {
+            "description": "범위 오류. Content-Range: bytes */전체길이."
+          },
+          "503": {
+            "description": "저장소 이용 불가."
+          }
+        }
+      },
+      "head": {
+        "operationId": "headMemberVideoContent",
+        "summary": "인증된 동영상 스트림",
+        "description": "요청마다 현재 활성 세션·그룹멤버십·차단·READY 상태를 검사한다. 연결 종료 시 R2 스트림 중단. URL만 보유하면 접근 불가.",
+        "tags": ["photos"],
+        "security": [
+          {
+            "ProductionSession": []
+          },
+          {
+            "DevelopmentSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "albumId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "photoId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "purpose",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["play", "download"],
+              "default": "play"
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "단일 bytes 범위만 지원. open/suffix 가능, 다중·잘못된·초과 범위 416."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "전체 MP4(HEAD는 본문 없음).",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "private, no-store"
+              },
+              "Content-Length": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "실제 응답 바이트 길이"
+              },
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "bytes"
+              },
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "inline 또는 attachment"
+              }
+            }
+          },
+          "206": {
+            "description": "부분 MP4. Content-Range와 Content-Length 반환.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "private, no-store"
+              },
+              "Content-Length": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "실제 응답 바이트 길이"
+              },
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "bytes"
+              },
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "inline 또는 attachment"
+              }
+            }
+          },
+          "401": {
+            "description": "현재 세션 없음."
+          },
+          "403": {
+            "description": "관리자 Origin·티켓·MFA·재인증 거부."
+          },
+          "404": {
+            "description": "대상 없거나 접근 권한 없음."
+          },
+          "416": {
+            "description": "범위 오류. Content-Range: bytes */전체길이."
+          },
+          "503": {
+            "description": "저장소 이용 불가."
+          }
+        }
+      }
+    },
+    "/v1/admin/photos/{photoId}/video/content": {
+      "get": {
+        "operationId": "getAdminVideoContent",
+        "summary": "인증된 동영상 스트림",
+        "description": "요청마다 현재 권한 검사. R2 스트림을 메모리 전체 적재 없이 전달하고 클라이언트 연결 종료 시 중단. 관리자는 이 경로만 custom header 대신 세션 바인딩 티켓과 정확한 Origin을 요구한다.",
+        "tags": ["admin"],
+        "security": [
+          {
+            "ProductionAdminSession": []
+          },
+          {
+            "DevelopmentAdminSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "photoId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "ticket",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 1500
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "단일 bytes 범위만 지원. open/suffix 가능, 다중·잘못된·초과 범위 416."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "전체 MP4(HEAD는 본문 없음).",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "private, no-store"
+              },
+              "Content-Length": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "실제 응답 바이트 길이"
+              },
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "bytes"
+              },
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "inline 또는 attachment"
+              }
+            },
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "부분 MP4. Content-Range와 Content-Length 반환.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "private, no-store"
+              },
+              "Content-Length": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "실제 응답 바이트 길이"
+              },
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "bytes"
+              },
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "inline 또는 attachment"
+              }
+            },
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "현재 세션 없음."
+          },
+          "403": {
+            "description": "관리자 Origin·티켓·MFA·재인증 거부."
+          },
+          "404": {
+            "description": "대상 없거나 접근 권한 없음."
+          },
+          "416": {
+            "description": "범위 오류. Content-Range: bytes */전체길이."
+          },
+          "503": {
+            "description": "저장소 이용 불가."
+          }
+        }
+      },
+      "head": {
+        "operationId": "headAdminVideoContent",
+        "summary": "인증된 동영상 스트림",
+        "description": "요청마다 현재 권한 검사. R2 스트림을 메모리 전체 적재 없이 전달하고 클라이언트 연결 종료 시 중단. 관리자는 이 경로만 custom header 대신 세션 바인딩 티켓과 정확한 Origin을 요구한다.",
+        "tags": ["admin"],
+        "security": [
+          {
+            "ProductionAdminSession": []
+          },
+          {
+            "DevelopmentAdminSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "photoId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "ticket",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 1500
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "단일 bytes 범위만 지원. open/suffix 가능, 다중·잘못된·초과 범위 416."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "전체 MP4(HEAD는 본문 없음).",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "private, no-store"
+              },
+              "Content-Length": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "실제 응답 바이트 길이"
+              },
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "bytes"
+              },
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "inline 또는 attachment"
+              }
+            }
+          },
+          "206": {
+            "description": "부분 MP4. Content-Range와 Content-Length 반환.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "private, no-store"
+              },
+              "Content-Length": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "실제 응답 바이트 길이"
+              },
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "bytes"
+              },
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "inline 또는 attachment"
+              }
+            }
+          },
+          "401": {
+            "description": "현재 세션 없음."
+          },
+          "403": {
+            "description": "관리자 Origin·티켓·MFA·재인증 거부."
+          },
+          "404": {
+            "description": "대상 없거나 접근 권한 없음."
+          },
+          "416": {
+            "description": "범위 오류. Content-Range: bytes */전체길이."
+          },
+          "503": {
+            "description": "저장소 이용 불가."
           }
         }
       }
@@ -13913,8 +14507,8 @@
         "properties": {
           "url": {
             "type": "string",
-            "format": "uri",
-            "description": "비공개 저장소의 서명 GET URL(10분). 그대로 <video src> 또는 다운로드 링크로 쓴다. Range 요청을 지원한다. 쿠키·X-Woori-Request를 보내지 않으며 로그·분석에 남기지 않는다. 만료되면 이 API를 다시 호출한다."
+            "format": "uri-reference",
+            "description": "API origin 기준으로 resolve할 루트 상대경로. 회원 쿠키와 함께 GET/HEAD/Range로 접근. video crossOrigin=use-credentials; 다운로드는 navigation. 외부 R2 읽기 URL 없음."
           },
           "expiresAt": {
             "type": "string",
@@ -17289,8 +17883,8 @@
         "properties": {
           "url": {
             "type": "string",
-            "format": "uri",
-            "description": "변환본 MP4의 10분 서명 GET URL(inline, Range 지원). 원본은 저장하지 않으므로 제공할 수 없다."
+            "format": "uri-reference",
+            "description": "API origin 기준 루트 상대경로 및 현재 관리자 세션 바인딩 티켓. video crossOrigin=use-credentials 필수. Origin=ADMIN_WEB_ORIGIN 및 관리자 쿠키와 현재 MFA/재인증 필요. 티켓은 5분 또는 세션/재인증 만료 중 빠른 시각에 만료. 로그/분석에 티켓을 남기지 않는다."
           },
           "expiresAt": {
             "type": "string",

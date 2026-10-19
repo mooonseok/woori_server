@@ -4,12 +4,12 @@
 
 - src/domain/auth: controller/service/repository, password, auth-rate-limit, mail.service.
 - src/common/configurations/development-mail.ts: DEV_MAIL_DIR 기본값과 readiness 공통 검증.
-- src/domain/groups, invitations: 그룹 생성/조회, 초대. 명단·탈퇴·이전 등 후속 필요.
+- src/domain/groups, invitations: 그룹 생성/조회, 초대, 명단·탈퇴·소유권 이전·삭제.
 - src/domain/photos, albums, notifications: 현재 그룹 권한·소유권·알림 원자성.
 - src/common/push, src/domain/push, src/worker/push: 암호화 구독/발송/표시 재검증.
 - src/worker/media-cleanup: 삭제 작업 재시도. 새 처리 큐도 worker 생명주기와 충돌하지 않게 통합.
 - prisma/schema.prisma, prisma/migrations, prisma/runtime-grants.sql: DB 정본.
-- contracts/openapi.json: 공개 계약. src/admin은 별도 관리자 구현 대상.
+- contracts/openapi.json: 공개 계약. src/admin은 별도 관리자 인증·MFA·감사·운영 구현.
 
 ## 작업별 책임
 
@@ -41,7 +41,6 @@ pnpm format:check
 node --test .handoff/remaining-work/lifecycle.test.mjs
 ```
 
-기준선: 정책 18개, 단위 49개, 격리 DB 통합 37개 통과. 실제 메일/두 계정 Chrome 수신도 확인.
-이는 직전 컴퓨터에서의 결과이며 새 환경에서는 재검증한다.
+최신 검사 수치·환경·미검증은 status.json의 최신 evidence를 따른다. 새 환경에서는 재검증한다.
 통합 runner는 로컬 parent를 확인 후 임시 woori_test_* DB만 생성·삭제한다.
 실제 개발 DB·운영 DB에 reset/seed로 테스트하지 않는다.

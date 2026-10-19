@@ -1,5 +1,25 @@
 -- Explicit provisioning step after migration. Dedicated server-only login role must exist.
 -- Never grant this role to Supabase anon/authenticated or use its password in the browser.
+-- Prisma's migration ledger is normally in public, where Supabase default
+-- privileges can grant access to its Data API roles even with the Data API off.
+-- Only the migration owner needs this table. Local PostgreSQL does not have
+-- Supabase roles, so check for each role before revoking. Also protect a ledger
+-- in woori if a future migration connection explicitly selects that schema.
+DO $$
+DECLARE ledger_schema text; api_role text;
+BEGIN
+  FOREACH ledger_schema IN ARRAY ARRAY['public', 'woori'] LOOP
+    IF to_regclass(format('%I._prisma_migrations', ledger_schema)) IS NOT NULL THEN
+      EXECUTE format('REVOKE ALL ON TABLE %I._prisma_migrations FROM PUBLIC', ledger_schema);
+      FOREACH api_role IN ARRAY ARRAY['anon', 'authenticated', 'service_role', 'woori_api'] LOOP
+        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname=api_role) THEN
+          EXECUTE format('REVOKE ALL ON TABLE %I._prisma_migrations FROM %I', ledger_schema, api_role);
+        END IF;
+      END LOOP;
+    END IF;
+  END LOOP;
+END $$;
+
 GRANT USAGE ON SCHEMA woori TO woori_api;
 GRANT SELECT, INSERT, UPDATE ON woori.users, woori.sessions, woori.email_tokens,
   woori.rate_limit_buckets, woori.groups, woori.memberships, woori.invitations TO woori_api;

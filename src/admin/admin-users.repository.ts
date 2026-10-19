@@ -259,12 +259,13 @@ export class AdminUsersRepository {
           ownedGroupCount: ownership.ownedGroupCount,
         });
       },
-      completed: (tx) =>
-        writeAdminAudit(tx, {
+      completed: async (tx) => {
+        await writeAdminAudit(tx, {
           ...userAudit(adminId, userId, reason),
           action: 'ADMIN_USER_DELETED',
           metadata: { previousStatus, status: 'DELETED' },
-        }),
+        });
+      },
     });
     return this.prisma.client.$transaction((tx) => userDetail(tx, userId));
   }

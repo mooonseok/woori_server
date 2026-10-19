@@ -6,30 +6,20 @@
 
 ## 현재 진행 상태
 
-2026-10-15: W01–W03, W04 구현 PR #12 및 계정 설정 PR #13 머지 완료. W04 실기기·배포 메모리 검증과 계정 설정 모바일 검증은 남아 있다. 현재 `feature/account-deletion`에서 W05 회원 탈퇴 구현과 자동·두 계정 Chrome·실제 R2 검증을 완료했다. 로컬 개발 DB에 승인된 최소 DELETE 권한을 적용했고, 합성 테스트 데이터는 정리했다. 모바일 실기기·대량 계정 성능 검증은 남아 있다. 소유 그룹은 이전·삭제 후 탈퇴, 공유 사진·댓글은 탈퇴한 회원으로 유지, 계정 정보는 즉시 정리하고 복구 없이 새 계정 재가입을 허용한다. 이후 `feature/service-guidance`에서 공지·도움말·문의·개인정보 안내·신고·개인 차단을 구현하고 자동·격리 DB·실제 R2·브라우저·iOS 시뮬레이터 검증을 마치고 사용자 요청으로 로컬 커밋했다(push 없음). W06은 같은 브랜치에서 이어간다. W05는 실기기 모바일 검증이 남아 진행 중이다. 사용자 요청으로 이번 구현을 portfolio 방식의 로컬 커밋으로 기록하며, push는 하지 않는다. 상세 근거는 `status.json`을 따른다. 2026-10-16: W06 관리자(인증·MFA·공지·문의·신고·회원/그룹 관리·지표)를 develop 기반 `feature/admin-operations`에서 마무리하고 격리 fixture 실검증·독립 리뷰 반영·woori_dev 마이그레이션 적용(사용자 승인)을 마쳤다. 첫 관리자 생성과 보관 기간 결정이 남아 W06은 진행 중이다(미커밋). 2026-10-16: W07 가족 베타 준비 코드(알림 묶음, 앨범 기간·목록, 그리드 썸네일, 동영상 업로드·H.264 변환, 메일 outbox·모니터링·백업·배포 설정)를 `feature/family-beta-ops`에서 구현·격리 검증·독립 리뷰 반영했고 woori_dev에 W07 마이그레이션을 적용(사용자 승인)했다. 운영 계정·배포와 실기기 확인이 남아 W07은 진행 중이다(미커밋).
+2026-10-16 원격 fetch 후 develop 확인: PR #16 관리자 구현 `f33dc49`, PR #17 가족 베타 구현 `a095cc1`가 머지돼 있다. W01–W03은 완료, W04–W07은 실기기·운영 수용·정책 결정이 남아 진행 중, W08은 미착수다. 과거 기록의 미커밋·push 없음은 당시 상태이며 현재 상태는 이 절과 status.json의 최신 근거를 따른다.
 
-## 집에서 시작
+운영 보완은 `fix/production-readiness`에서 진행했다. 2026-10-16 사용자 결정으로 API·워커 배포 목표는 AWS Lightsail 서울로 변경됐다. Supabase Pro 서울 운영 DB에 19개 migration과 woori_api 권한을 적용하고 TLS·로컬 실제 API/워커 연결을 검증했다. 동영상의 API 권한 검사 전달과 일일 R2 백업 계획을 사용자 승인으로 보완했다. 로컬 자동 검사와 실제 개발 R2 어댑터 검증을 진행했으며, 당시 브라우저 재생 검증은 Chrome 차단으로 미완료였다. 상세 과거 검증 수치는 status.json을 따른다.
 
-1. 두 저장소를 나란히 clone하거나 기존 저장소에서 `git fetch origin` 실행.
-2. 처음 받는 브랜치: `git switch --track origin/chore/remaining-work-handoff`.
-   이미 로컬에 있으면 `git switch chore/remaining-work-handoff` 후 `git pull --ff-only`.
-   로컬 변경이 있으면 먼저 확인하며 reset/강제 checkout하지 않는다.
-3. 각 저장소 `AGENTS.md` → 이 파일 → `SETUP.md` → `DESIGN.md` → `PLAN.md` → `REPOSITORY.md` 순서로 읽는다.
-4. `node .handoff/remaining-work/lifecycle.mjs status`로 남은 작업 확인.
-5. 새 기능은 인계 브랜치에서 `feature/account-recovery` 같은 별도 작업 브랜치로 분기한다.
-   인계 브랜치가 develop에 머지된 이후에는 최신 develop에서 분기한다.
-   인계 브랜치가 아직 머지되지 않았다면 기능 PR에 인계 커밋도 포함될 수 있으므로 PR 범위를 확인한다.
-6. 시작 범위는 W01. 문서 전체가 모든 작업의 일괄 실행·배포·DB 변경 승인인 것은 아니다.
-   현재 요청은 인계 자료의 커밋·push까지다. 향후 구현 커밋·push는 해당 작업의 사용자 요청을 따른다.
+2026-10-19 사용자 보고: Lightsail 서울 API·워커에서 Docker가 실행 중이며 API HTTPS healthz/readyz는 200, 워커는 polling 및 lastPassOk/videoReady true를 확인했다. 운영 R2 버킷·토큰·CORS 설정과 Cloudflare Pages `woori-web` 배포를 마쳤고 `woori.stream` 로그인 화면을 확인했다. 이번 문서 갱신에서 원격 상태를 직접 재검증하지는 않았다. 실제 가입·메일·미디어·푸시의 운영 수용, 실기기 검증, 일일 백업 스케줄·실패 알림·복원 훈련은 미확인이다. 관리자 웹 배포도 확인되지 않았다. 새 커밋·push·배포는 각 사용자 요청 범위에서만 진행한다.
 
-## 새 Codex / Claude에 붙여 넣기
+## 다른 컴퓨터에서 재개
 
-> 두 저장소의 AGENTS.md와 .handoff/remaining-work/README.md를 읽고 남은 작업을 이어가자.
-> 먼저 status.json과 실제 코드·Git 상태를 대조해서 W01의 현재 구현 여부를 확인해줘.
-> REPOSITORY.md의 경계와 DESIGN.md의 제안/확정 구분을 지키고, 필요한 결정은 구현 전에 짚어줘.
-> 이번 작업은 W01 범위로 진행하고 DB 적용은 대상·영향·복구 방법을 확인해줘.
-> 검증 결과와 미확인 사항을 status.json에 갱신하고 커밋·push는 별도 요청 전까지 하지마.
-> 일부 기능 완료만으로 전체 인계 자료를 삭제하지 말고 CLEANUP.md의 완료 트리거를 따라줘.
+1. 두 저장소를 나란히 두고 미커밋 변경·브랜치부터 확인한다. reset·강제 checkout하지 않는다.
+2. `git fetch origin` 후 실제 머지 상태와 필요한 미머지 커밋을 확인한다. 이전 W01 인계 브랜치로 돌아가지 않는다.
+3. `AGENTS.md` → `status.json` → `SETUP.md` → `DESIGN.md` → `PLAN.md` → `REPOSITORY.md` 순으로 확인한다.
+4. `node .handoff/remaining-work/lifecycle.mjs status`를 실행한다.
+5. 운영 준비·W07 수용을 우선 진행하되 실제 운영 DB 변경·배포는 대상·영향·복구 계획을 제시하고 승인받는다. 계정 생성·결제·비밀값 입력은 사용자가 직접 한다.
+6. 실기기 없는 항목은 미검증으로 남기고, 모든 W가 완료되기 전에는 임시 자료를 삭제하지 않는다.
 
 ## 문서 역할
 
@@ -50,4 +40,4 @@
   현재 API는 NestJS이며 Resend 인증 검증이 끝났다. 실제 코드와 OpenAPI가 우선이다.
 - 기존 `project.json`의 절대 문서 경로는 이 컴퓨터 전용이다. 집에서 그 경로를 만들 필요 없다.
   이 인계 자료는 상대 경로만으로 재개할 수 있게 작성했다.
-- 이 브랜치는 인계 자료·정리 도구만 추가한다. 아래 제안 API·DB 모델은 아직 구현된 계약이 아니다.
+- 초기 인계는 자료·정리 도구만 포함했지만 이후 W01–W07 코드가 반영됐다. 구현 여부는 실제 코드·OpenAPI와 status.json의 최신 근거를 따른다.

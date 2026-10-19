@@ -9,6 +9,7 @@ import {
   MediaStorageService,
 } from '../../common/media/media-storage.service';
 import { AuthRateLimitService } from '../auth/auth-rate-limit.service';
+import type { PrivateVideo } from '../../common/media/video-response';
 import { isVideoUpload, PhotosRepository } from './photos.repository';
 import type { UploadPhotoDto } from './dto/photo.dto';
 @Injectable()
@@ -168,9 +169,7 @@ export class PhotosService {
       throw error;
     }
   }
-  // Signed short-lived R2 URL for the transcoded MP4: inline for playback
-  // (R2 serves Range requests) or attachment for download. Membership and
-  // visibility are checked first; signing performs no I/O.
+  // Metadata has a refresh hint; the URL itself grants no access.
   async video(
     groupId: string,
     albumId: string,
@@ -185,21 +184,48 @@ export class PhotosService {
       userId
     );
     this.requireStorage();
-    const signed = await this.storage.signedVideoUrl(
-      variant.objectKey,
-      purpose === 'download'
-        ? { download: true, filename: `woori-${photoId}.mp4` }
-        : { download: false }
-    );
     return {
-      url: signed.url,
-      expiresAt: signed.expiresAt,
+      url: `/v1/groups/${groupId}/albums/${albumId}/photos/${photoId}/video/content?purpose=${purpose}`,
+      expiresAt: new Date(Date.now() + 600_000),
       purpose,
       mime: variant.mime,
       bytes: Number(variant.bytes),
       width: variant.width,
       height: variant.height,
       durationMs: variant.durationMs,
+    };
+  }
+  async videoContent(
+    groupId: string,
+    albumId: string,
+    photoId: string,
+    userId: string
+  ): Promise<PrivateVideo> {
+    const authorize = () =>
+      this.repository.videoVariant(groupId, albumId, photoId, userId);
+    const variant = await authorize();
+    this.requireStorage();
+    return {
+      bytes: Number(variant.bytes),
+      open: async (range, signal) => {
+        const body = await this.storage.openVideo(
+          variant.objectKey,
+          Number(variant.bytes),
+          range,
+          signal
+        );
+        try {
+          await authorize();
+        } catch (error) {
+          body.destroy();
+          throw error;
+        }
+        if (body.errored)
+          throw new ServiceUnavailableException({
+            code: 'MEDIA_STORAGE_UNAVAILABLE',
+          });
+        return body;
+      },
     };
   }
   remove(groupId: string, albumId: string, photoId: string, userId: string) {

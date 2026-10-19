@@ -21,9 +21,13 @@ import {
   ADMIN_REAUTH,
 } from '../decorators/admin-access.decorator';
 import type { AdminRequest } from '../dto/admin-session.dto';
+import {
+  ADMIN_VIDEO_STREAM,
+  verifyAdminVideoTicket,
+} from '../admin-video-ticket';
 const SAFE_METHODS = ['GET', 'HEAD'];
 // Admin requests must come from the admin web only. Every admin request
-// (including audited GETs) carries X-Woori-Request: 1, which a cross-site page
+// (except the session-bound HTML video stream) carries X-Woori-Request: 1, which a cross-site page
 // cannot add without a CORS preflight that only ADMIN_WEB_ORIGIN passes. A
 // present Origin must be the admin web origin (the member web origin is
 // rejected for every method) and mutations must send it. OPTIONS preflights
@@ -67,7 +71,23 @@ export class AdminSessionGuard implements CanActivate {
     }
     const session = await this.auth.resolveSession(request);
     if (!session) adminAuthenticationRequired();
-    checkAdminOrigin(request, config);
+    // Only the explicitly marked HTML video route substitutes a signed grant
+    // for the custom header that <video> cannot send. Origin remains mandatory.
+    if (
+      this.reflector.getAllAndOverride<boolean>(ADMIN_VIDEO_STREAM, targets)
+    ) {
+      if (
+        !SAFE_METHODS.includes(request.method) ||
+        request.get('Origin') !== config.webOrigin
+      )
+        throw new ForbiddenException({ code: 'REQUEST_ORIGIN_REJECTED' });
+      verifyAdminVideoTicket(
+        config,
+        session,
+        String(request.params.photoId ?? ''),
+        request.query.ticket
+      );
+    } else checkAdminOrigin(request, config);
     const now = new Date();
     const error = adminAccessError(session, level, reauth, now);
     if (error === 'ADMIN_MFA_REQUIRED')

@@ -1,4 +1,4 @@
-// W07-4 weekly R2 backup (production bucket -> separate backup bucket).
+// W07-4 daily R2 backup (production bucket -> separate backup bucket).
 // Pure planning: incremental by key + size + ETag. The backup never loses an
 // object unless pruning is explicitly requested, and then only objects that
 // the backup run itself first saw missing from the source N+ days ago. That

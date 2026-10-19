@@ -388,50 +388,14 @@ test('media tools run without a shell and fail closed', async () => {
   );
 });
 
-test('video URLs are short-lived signed GETs; uploads accept videos up to 200 MB', async () => {
+test('upload signing accepts videos up to 200 MB without public read URLs', async () => {
   const storage = new MediaStorageService({
     accountId: 'a'.repeat(32),
     accessKeyId: 'unit-test-access-key',
     secretAccessKey: 'unit-test-secret-key',
     bucket: 'woori-unit-test',
   });
-  const key =
-    'photos/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/video.mp4';
   try {
-    const play = await storage.signedVideoUrl(key, { download: false });
-    const url = new URL(play.url);
-    assert.equal(url.protocol, 'https:');
-    assert.equal(url.pathname, `/woori-unit-test/${key}`);
-    assert.equal(url.searchParams.get('X-Amz-Expires'), '600');
-    assert.equal(url.searchParams.get('response-content-type'), 'video/mp4');
-    assert.equal(
-      url.searchParams.get('response-content-disposition'),
-      'inline'
-    );
-    assert.equal(
-      url.searchParams.get('response-cache-control'),
-      'private, no-store'
-    );
-    assert.ok(!play.url.includes('unit-test-secret-key'));
-    assert.ok(play.expiresAt.getTime() - Date.now() <= 600_000);
-    const download = new URL(
-      (
-        await storage.signedVideoUrl(key, {
-          download: true,
-          filename: 'woori-x.mp4',
-        })
-      ).url
-    );
-    assert.equal(
-      download.searchParams.get('response-content-disposition'),
-      'attachment; filename="woori-x.mp4"'
-    );
-    for (const [badKey, disposition] of [
-      [key.replace('video.mp4', 'display.webp'), { download: false }],
-      ['staging/11111111-1111-4111-8111-111111111111', { download: false }],
-      [key, { download: true, filename: 'a"; b.mp4' }],
-    ] as const)
-      await assert.rejects(storage.signedVideoUrl(badKey, disposition));
     const staging = 'staging/11111111-1111-4111-8111-111111111111';
     await storage.presign(staging, 'video/quicktime', MAX_VIDEO_UPLOAD_BYTES);
     // The signed PUT lives exactly as long as the reservation window.
