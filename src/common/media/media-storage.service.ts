@@ -22,6 +22,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import type { VideoRange } from './video-response';
 import sharp, { OutputInfo } from 'sharp';
 import { exifCapturedAt } from './photo-capture-date';
 import {
@@ -80,7 +81,6 @@ const mimeByFormat: Record<string, string> = {
 };
 const uploadInvalid = () =>
   new BadRequestException({ code: 'INVALID_PHOTO_FILE' });
-export const VIDEO_URL_TTL_SECONDS = 600;
 const VIDEO_TEMP_PREFIX = 'woori-video-';
 const isVideoMime = (mime: string) =>
   (VIDEO_MIMES as readonly string[]).includes(mime);
@@ -694,38 +694,52 @@ export class MediaStorageService implements OnModuleDestroy {
       if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
     }
   }
-  /**
-   * Short-lived signed GET for the transcoded MP4 (R2 serves Range requests).
-   * Callers check membership/visibility first; the URL is never logged.
-   */
-  async signedVideoUrl(
+  /** Private R2 stream. The caller authorizes before and after opening it. */
+  async openVideo(
     objectKey: string,
-    disposition: { download: false } | { download: true; filename: string }
-  ) {
+    bytes: number,
+    range: VideoRange | null,
+    signal: AbortSignal
+  ): Promise<Readable> {
     this.validKey(objectKey, 'photos/');
-    if (!objectKey.endsWith('/video.mp4')) throw uploadInvalid();
     if (
-      disposition.download &&
-      !/^[a-zA-Z0-9._-]{1,80}$/.test(disposition.filename)
+      !objectKey.endsWith('/video.mp4') ||
+      !Number.isSafeInteger(bytes) ||
+      bytes < 1 ||
+      bytes > MAX_VIDEO_OUTPUT_BYTES
     )
       throw uploadInvalid();
-    const url = await getSignedUrl(
-      this.sdk(),
-      new GetObjectCommand({
-        Bucket: this.options.bucket,
-        Key: objectKey,
-        ResponseContentType: 'video/mp4',
-        ResponseCacheControl: 'private, no-store',
-        ResponseContentDisposition: disposition.download
-          ? `attachment; filename="${disposition.filename}"`
-          : 'inline',
-      }),
-      { expiresIn: VIDEO_URL_TTL_SECONDS }
-    );
-    return {
-      url,
-      expiresAt: new Date(Date.now() + VIDEO_URL_TTL_SECONDS * 1000),
-    };
+    let body: Readable | undefined;
+    try {
+      const object = await this.sdk().send(
+        new GetObjectCommand({
+          Bucket: this.options.bucket,
+          Key: objectKey,
+          ...(range ? { Range: `bytes=${range.start}-${range.end}` } : {}),
+        }),
+        { abortSignal: signal }
+      );
+      body = object.Body as Readable;
+      if (
+        !(body instanceof Readable) ||
+        object.ContentLength !== (range?.length ?? bytes) ||
+        (range &&
+          object.ContentRange !== `bytes ${range.start}-${range.end}/${bytes}`)
+      )
+        throw unavailable();
+      const stream = body;
+      // The caller rechecks DB permissions before attaching pipeline. Keep
+      // socket errors handled during that await; Readable.errored retains it.
+      stream.on('error', () => undefined);
+      const abort = () => stream.destroy();
+      signal.addEventListener('abort', abort, { once: true });
+      stream.once('close', () => signal.removeEventListener('abort', abort));
+      if (signal.aborted) stream.destroy();
+      return stream;
+    } catch {
+      body?.destroy();
+      throw unavailable();
+    }
   }
   async read(objectKey: string, maxBytes: number) {
     this.validKey(objectKey, 'photos/');

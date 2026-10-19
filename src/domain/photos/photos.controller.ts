@@ -8,9 +8,11 @@ import {
   Post,
   Query,
   Res,
+  Req,
   StreamableFile,
 } from '@nestjs/common';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
+import { streamPrivateVideo } from '../../common/media/video-response';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { SessionUser } from '../../common/dto/session-user.dto';
 import {
@@ -89,6 +91,27 @@ export class PhotosController {
     response.setHeader('Cache-Control', 'no-store');
     response.setHeader('Vary', 'Cookie');
     return this.service.video(p.groupId, p.albumId, p.photoId, u.id, q.purpose);
+  }
+  @Get('photos/:photoId/video/content') async videoContent(
+    @Param() p: PhotoParamsDto,
+    @Query() q: VideoAccessDto,
+    @CurrentUser() u: SessionUser,
+    @Req() request: Request,
+    @Res() response: Response
+  ) {
+    const video = await this.service.videoContent(
+      p.groupId,
+      p.albumId,
+      p.photoId,
+      u.id
+    );
+    await streamPrivateVideo(
+      request,
+      response,
+      video,
+      q.purpose === 'download',
+      `woori-${p.photoId}.mp4`
+    );
   }
   @Get('photos/:photoId/content') async content(
     @Param() p: PhotoParamsDto,

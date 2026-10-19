@@ -103,7 +103,7 @@ export async function writeAdminAudit(
   tx: Prisma.TransactionClient,
   entry: AdminAuditEntry
 ) {
-  await tx.adminAuditLog.create({
+  return tx.adminAuditLog.create({
     data: {
       adminId: entry.adminId,
       action: entry.action,

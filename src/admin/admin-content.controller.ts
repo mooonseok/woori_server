@@ -5,9 +5,13 @@ import {
   Param,
   Post,
   Res,
+  Get,
+  Req,
   StreamableFile,
 } from '@nestjs/common';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
+import { AdminVideoStream } from './admin-video-ticket';
+import { streamPrivateVideo } from '../common/media/video-response';
 import { AdminContentService } from './admin-content.service';
 import { AdminApi } from './decorators/admin-api.decorator';
 import {
@@ -48,8 +52,7 @@ export class AdminContentController {
       disposition: 'inline',
     });
   }
-  // Video (W07-3): the poster is the photo view above; the stream is a signed
-  // short-lived URL to the transcoded MP4 issued only after the audit row.
+  // Video: audit and recent re-authentication precede a session-bound grant.
   @RequireAdminReauth()
   @Post('photos/:photoId/video')
   @HttpCode(200)
@@ -60,7 +63,21 @@ export class AdminContentController {
     @Res({ passthrough: true }) response: Response
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    return this.service.viewVideo(session.admin.id, params.photoId, dto.reason);
+    return this.service.viewVideo(session, params.photoId, dto.reason);
+  }
+  @AdminVideoStream()
+  @RequireAdminReauth()
+  @Get('photos/:photoId/video/content')
+  async videoContent(
+    @Param() params: AdminPhotoParamsDto,
+    @Req() request: Request,
+    @Res() response: Response
+  ) {
+    await streamPrivateVideo(
+      request,
+      response,
+      await this.service.videoContent(params.photoId)
+    );
   }
   @RequireAdminReauth()
   @Post('comments/:commentId/view')

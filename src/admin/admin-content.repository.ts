@@ -89,7 +89,7 @@ export class AdminContentRepository {
     photo: { id: string; groupId: string },
     reason: string
   ) {
-    await this.prisma.client.$transaction((tx) =>
+    return this.prisma.client.$transaction((tx) =>
       writeAdminAudit(tx, {
         adminId,
         action: 'ADMIN_VIDEO_VIEWED',

@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import {
   copyFileSync,
+  createReadStream,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -14,6 +15,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
+import type { VideoRange } from '../src/common/media/video-response';
 import { Pool } from 'pg';
 import request from 'supertest';
 import type { Response, Test } from 'supertest';
@@ -231,15 +233,19 @@ test('isolated PostgreSQL: W07-3 video upload, transcode, playback and cleanup',
           byteSize: data.length,
         };
       },
-      signedVideoUrl: async (
+      openVideo: async (
         key: string,
-        disposition: { download: boolean; filename?: string }
+        _bytes: number,
+        range: VideoRange | null,
+        signal: AbortSignal
       ) => {
-        signed.push({ key, ...disposition });
-        return {
-          url: `https://r2.example.test/signed/${randomUUID()}`,
-          expiresAt: new Date(Date.now() + 10 * MINUTE),
-        };
+        signed.push({ key, download: false });
+        const path = bucket.get(key);
+        if (!path) throw new Error('missing object');
+        return createReadStream(path, {
+          ...(range ? { start: range.start, end: range.end } : {}),
+          signal,
+        });
       },
       // The real removePhotoObjects (and its allowed-key check) runs on top.
       listPhotoKeys: async (prefix: string) =>
@@ -590,7 +596,7 @@ test('isolated PostgreSQL: W07-3 video upload, transcode, playback and cleanup',
     );
 
     await t.test(
-      'playback and download use short-lived signed URLs after the access check',
+      'playback and download stream through per-request authorization and byte ranges',
       async () => {
         const play = (
           await member.agent.get(`${base}/photos/${h264}/video`).expect(200)
@@ -611,6 +617,40 @@ test('isolated PostgreSQL: W07-3 video upload, transcode, playback and cleanup',
         const videoKey = (await variants(h264)).find(
           (row) => row.kind === 'video'
         )!.objectKey;
+        assert.equal(
+          play.url,
+          `${base}/photos/${h264}/video/content?purpose=play`
+        );
+        const first = await member.agent
+          .get(play.url)
+          .set('Range', 'bytes=0-0')
+          .expect(206);
+        assert.equal(first.headers['content-range'], `bytes 0-0/${play.bytes}`);
+        assert.equal(first.headers['content-length'], '1');
+        assert.equal(first.headers['cache-control'], 'private, no-store');
+        await member.agent
+          .head(play.url)
+          .expect(200)
+          .expect('Content-Length', String(play.bytes));
+        await member.agent
+          .get(play.url)
+          .set('Range', `bytes=${play.bytes}-`)
+          .expect(416)
+          .expect('Content-Range', `bytes */${play.bytes}`);
+        await member.agent
+          .get(play.url)
+          .set('Range', 'bytes=0-1,3-4')
+          .expect(416);
+        await member.agent
+          .get(play.url)
+          .set('Range', 'bytes=-8')
+          .expect(206)
+          .expect('Content-Length', '8');
+        await member.agent
+          .get(play.url)
+          .set('Range', `bytes=${play.bytes - 8}-`)
+          .expect(206)
+          .expect('Content-Length', '8');
         assert.deepEqual(signed.at(-1), { key: videoKey, download: false });
         const download = (
           await member.agent
@@ -618,11 +658,14 @@ test('isolated PostgreSQL: W07-3 video upload, transcode, playback and cleanup',
             .expect(200)
         ).body;
         assert.equal(download.purpose, 'download');
-        assert.deepEqual(signed.at(-1), {
-          key: videoKey,
-          download: true,
-          filename: `woori-${h264}.mp4`,
-        });
+        await member.agent
+          .get(download.url)
+          .set('Range', 'bytes=0-0')
+          .expect(206)
+          .expect(
+            'Content-Disposition',
+            `attachment; filename="woori-${h264}.mp4"`
+          );
         await member.agent
           .get(`${base}/photos/${h264}/video?purpose=stream`)
           .expect(400);
@@ -633,8 +676,21 @@ test('isolated PostgreSQL: W07-3 video upload, transcode, playback and cleanup',
         await member.agent
           .get(`${base}/photos/${h264}/content?variant=original`)
           .expect(404);
+        await owner.query(
+          `UPDATE woori.memberships SET status='LEFT' WHERE "groupId"=$1 AND "userId"=$2`,
+          [groupId, member.id]
+        );
+        await member.agent.get(play.url).expect(404);
+        await member.agent.head(play.url).expect(404);
+        await owner.query(
+          `UPDATE woori.memberships SET status='ACTIVE' WHERE "groupId"=$1 AND "userId"=$2`,
+          [groupId, member.id]
+        );
         const count = signed.length;
         await outsider.agent.get(`${base}/photos/${h264}/video`).expect(404);
+        await outsider.agent.get(play.url).expect(404);
+        await api.get(play.url).expect(401);
+        await api.head(play.url).expect(401);
         await api.get(`${base}/photos/${h264}/video`).expect(401);
         const photo = randomUUID();
         await owner.query(
@@ -649,13 +705,15 @@ test('isolated PostgreSQL: W07-3 video upload, transcode, playback and cleanup',
         // A viewer who blocked the uploader cannot get a URL.
         await mutate(member.agent.put(`/v1/blocks/${uploader.id}`)).expect(200);
         await member.agent.get(`${base}/photos/${h264}/video`).expect(404);
+        await member.agent.get(play.url).expect(404);
+        await member.agent.head(play.url).expect(404);
         await mutate(member.agent.delete(`/v1/blocks/${uploader.id}`)).expect(
           204
         );
         assert.equal(
           signed.length,
           count,
-          'No URL is signed for a denied request'
+          'Denied requests never open storage'
         );
       }
     );
@@ -750,7 +808,7 @@ test('isolated PostgreSQL: W07-3 video upload, transcode, playback and cleanup',
     );
 
     await t.test(
-      'the audited admin view serves the poster and a signed transcode URL',
+      'audited video tickets are session-bound and every range rechecks admin authorization',
       async () => {
         const adminOrigin = process.env.ADMIN_WEB_ORIGIN!;
         const totpKey = process.env.ADMIN_TOTP_ENCRYPTION_KEY!;
@@ -823,8 +881,59 @@ test('isolated PostgreSQL: W07-3 video upload, transcode, playback and cleanup',
           'mime',
           'url',
         ]);
-        assert.equal(signed.length, count + 1);
-        assert.equal(signed.at(-1)!.download, false);
+        assert.equal(signed.length, count, 'grant creation never opens R2');
+        assert.match(
+          view.url,
+          new RegExp(`^/v1/admin/photos/${hevc}/video/content\\?ticket=`)
+        );
+        assert.ok(Date.parse(view.expiresAt) - Date.now() <= 5 * MINUTE);
+        const media = (url = view.url) =>
+          api
+            .get(url)
+            .set('Origin', adminOrigin)
+            .set('Cookie', `woori_admin_session=${token}`);
+        await media().set('Range', 'bytes=0-0').expect(206);
+        await api
+          .head(view.url)
+          .set('Origin', adminOrigin)
+          .set('Cookie', `woori_admin_session=${token}`)
+          .expect(200);
+        await api.get(view.url).set('Origin', adminOrigin).expect(401);
+        await api
+          .get(view.url)
+          .set('Cookie', `woori_admin_session=${token}`)
+          .expect(403);
+        await media(view.url + 'x').expect(403);
+        const otherToken = createToken();
+        await owner.query(
+          `INSERT INTO woori.admin_sessions (id,"adminId","tokenHash","expiresAt","idleExpiresAt","mfaVerifiedAt","reauthAt") SELECT $1,"adminId",$2,"expiresAt","idleExpiresAt","mfaVerifiedAt","reauthAt" FROM woori.admin_sessions WHERE "tokenHash"=$3`,
+          [randomUUID(), hashToken(otherToken), hashToken(token)]
+        );
+        await api
+          .get(view.url)
+          .set('Origin', adminOrigin)
+          .set('Cookie', `woori_admin_session=${otherToken}`)
+          .expect(403);
+        await owner.query(
+          'UPDATE woori.admin_sessions SET "revokedAt"=now() WHERE "tokenHash"=$1',
+          [hashToken(token)]
+        );
+        await media().expect(401);
+        await api
+          .head(view.url)
+          .set('Origin', adminOrigin)
+          .set('Cookie', `woori_admin_session=${token}`)
+          .expect(401);
+        await owner.query(
+          'UPDATE woori.admin_sessions SET "revokedAt"=NULL WHERE "tokenHash"=$1',
+          [hashToken(token)]
+        );
+
+        await api
+          .get(view.url)
+          .set('Origin', memberOrigin)
+          .set('Cookie', `woori_admin_session=${token}`)
+          .expect(403);
         const audits = (
           await owner.query(
             'SELECT reason,metadata FROM woori.admin_audit_logs WHERE action=\'ADMIN_VIDEO_VIEWED\' AND "targetId"=$1',
@@ -862,6 +971,7 @@ test('isolated PostgreSQL: W07-3 video upload, transcode, playback and cleanup',
           ).body.code,
           'ADMIN_REAUTH_REQUIRED'
         );
+        await media().expect(403);
         await owner.query(
           'UPDATE woori.admin_sessions SET "reauthAt"=now() WHERE "tokenHash"=$1',
           [hashToken(token)]

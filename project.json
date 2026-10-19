@@ -65,17 +65,18 @@
     "join notifications, join approval, memory pushes, manual album cover, server album search/taken-date sort (after beta)"
   ],
   "deployment": {
-    "api": "Railway paid; Serverless off",
-    "worker": "Railway paid; separate service; Serverless off",
-    "database": "Supabase Pro PostgreSQL",
-    "objects": "Cloudflare R2 Standard private buckets",
-    "web": "Cloudflare Pages static hosting for apps/web (woori.stream) and apps/admin (admin.woori.stream)",
-    "region": "Singapore for Railway API/worker and Supabase (Railway has no Seoul region)",
+    "api": "AWS Lightsail Seoul; separate 2 GB API instance; user reported Docker running and HTTPS healthz/readyz 200 on 2026-10-19, not reverified in this documentation update",
+    "worker": "AWS Lightsail Seoul; separate 4 GB worker instance; user reported Docker polling with lastPassOk/videoReady true on 2026-10-19, not reverified in this documentation update",
+    "database": "Supabase Pro PostgreSQL 17.11; woori-production in Seoul",
+    "objects": "Cloudflare R2 Standard private buckets; production bucket/token/CORS setup reported by user on 2026-10-19; backup acceptance pending",
+    "web": "Cloudflare Pages static hosting; user reported woori-web deployed and woori.stream login screen accessible on 2026-10-19; admin.woori.stream deployment not confirmed",
+    "region": "Seoul: AWS ap-northeast-2 and Supabase ap-northeast-2 (user changed from Railway/Singapore on 2026-10-16)",
     "domain": "woori.stream (Cloudflare Registrar/DNS): web woori.stream, admin admin.woori.stream, API api.woori.stream",
     "mail": "Resend from the mail.woori.stream subdomain with SPF/DKIM/DMARC",
-    "backup": "Supabase daily backups (7 days) + weekly R2 copy to a separate backup bucket; monthly restore drill; RPO 24 h, RTO half a day; no PITR",
-    "costCap": "USD 60/month with a usage alert at USD 45",
-    "status": "decided 2026-10-16; not provisioned"
+    "backup": "Supabase daily backups (7 days) + daily R2 copy to a separate private backup bucket; monthly restore drill; RPO target 24 h, RTO target half a day; no PITR. Scheduling, latest-success monitoring and restore verification are not deployed.",
+    "costCap": "Previous Railway USD45 alert/USD60 hard cap is superseded. Lightsail/AWS billing alerts and budgets are not configured; initial size remains subject to load verification.",
+    "status": "Production DB provisioned and verified 2026-10-16. As of 2026-10-19, user reports Lightsail API/worker Docker running, production R2 configured and Pages woori.stream login accessible. This documentation update did not independently reverify those reports. Production end-to-end acceptance, physical devices and daily backup scheduling/restore remain unverified.",
+    "backupSchedule": "Daily 03:00 KST copy-only backup remains planned. deploy/railway.backup.json is a legacy template, not active. Lightsail scheduler, successful-backup-age monitoring and restore drill pending."
   },
   "entryPoints": {
     "api": "dist/src/main.js",
@@ -85,13 +86,17 @@
     "schema": "prisma/schema.prisma",
     "migrations": "prisma/migrations",
     "applied": true,
-    "appliedEnvironment": "isolated local PostgreSQL 16 at 127.0.0.1:55439/woori_dev only",
-    "remoteApplied": false,
+    "appliedEnvironment": "Local woori_dev plus Supabase woori-production Seoul (production applied with explicit user approval on 2026-10-16)",
+    "remoteApplied": true,
     "runtimeRole": "woori_api (NOSUPERUSER, NOBYPASSRLS; separate migration credentials)",
     "authorization": "RLS allows server runtime role across granted rows; per-user group isolation is enforced in API membership queries",
     "runtimeGrants": "prisma/runtime-grants.sql",
     "pendingMigration": null,
-    "latestLocalMigration": "20261031000000_mail_outbox_monitoring (W07 migrations 20261029-20261031 and runtime grants applied to woori_dev with explicit user approval on 2026-10-16 after a pg_dump backup; remote not applied)"
+    "latestLocalMigration": "20261031000000_mail_outbox_monitoring (W07 migrations 20261029-20261031 and runtime grants applied to woori_dev with explicit user approval on 2026-10-16 after a pg_dump backup; production applied separately on 2026-10-16)",
+    "latestProductionMigration": "20261031000000_mail_outbox_monitoring; all 19 migrations with matching SHA256 checksums; 30 app tables with RLS and restricted runtime grants",
+    "productionVerification": "Historical direct verification on 2026-10-16: verify-full TLS1.3 for owner and woori_api; no superuser/createdb/createrole/replication/bypassrls/inherited roles/schema CREATE; local actual API Prisma reads and worker --once passed. One local worker heartbeat, no member/content data; readyz was 503 before production mail settings. Later user-reported deployment status is recorded under deployment; not independently reverified in this documentation update.",
+    "productionCredentials": "Outside repository: ~/.woori/production/migration.env (owner), runtime-db.env (runtime only), supabase-ca.crt. Env files mode0600. Certificate path must be changed for the deployment filesystem.",
+    "migrationLedgerProtection": "runtime-grants.sql revokes all ledger access from PUBLIC, anon, authenticated, service_role and woori_api (if present); owner retains control. Supabase default grants detected and removed in production on 2026-10-16."
   },
   "runtimeConfiguration": {
     "PORT": "default 3001",
@@ -154,11 +159,11 @@
     "memory": "sharp cache 32MiB, concurrency 1 and max two concurrent processing calls; these are not total process RSS limits. Benchmark combined API/worker memory before deployment."
   },
   "accountSettings": {
-    "scope": "MyPage settings, authenticated password change and new-email verification; account deletion is described separately below. W05 service guidance remains pending.",
+    "scope": "MyPage settings, authenticated password change and new-email verification; account deletion is described separately below. W05 service guidance is implemented; physical-device and operational policy acceptance remain pending.",
     "password": "Current password required; 12+ character new password; success revokes all sessions, push bindings and outstanding email tokens.",
     "email": "Current password required to request; old email remains until authenticated account confirms a single-use 30-minute token; latest request only. New email becomes verified.",
     "revocation": "Confirmation revokes all sessions, push bindings and outstanding email tokens; client clears private state and requires login and per-device push reconnection. Already handed-off provider messages cannot be recalled.",
-    "mail": "Resend new-address confirmation and old-address notice; notice is best-effort after commit. Durable mail retries remain W07.",
+    "mail": "Resend new-address confirmation and old-address notice; encrypted durable mail outbox and worker retries implemented in W07. Production delivery acceptance remains pending.",
     "verification": "Server policy:quality: 18 policy, 73 unit, 75 isolated PostgreSQL integration; client quality: 16 policy, 82 functional, builds/typecheck/lint/boundaries/format. Real Chrome password change/new login and email confirmation verified against DB, including all prior session/push revocation and unaffected member account. Resend new-address verification and old-address notice both delivered.",
     "database": "Additive nullable email_tokens.targetEmail only; no new runtime grants. Keep column on rollback; completed credential changes and revoked sessions remain.",
     "localMigration": "20261021000000_account_settings applied to 127.0.0.1:55439/woori_dev with explicit approval; nullable VARCHAR(254) verified, no new grants or existing-data deletion.",
@@ -186,25 +191,27 @@
     "blocks": "Personal and one-directional: blocker no longer sees blocked user's photos (counts/covers/list/content/memories), comments and totals, reactions, and receives no notifications/push caused by them; blocked user is not notified and group membership is unchanged. Block erases existing blocker<-blocked notifications; unblock restores content only. 500 per user, 60 mutations/hour. Blocker rows deleted on blocker account deletion; rows naming a deleted user are kept.",
     "privacy": "Public help/privacy pages describe implemented behaviour only; operator, privacy officer/contact, retention, processors and effective date are null placeholders until decided.",
     "verification": "Server 18 policy/87 unit/128 isolated integration; client 16 policy/121 functional, boundaries, builds. Isolated fixture DB with actual private R2 synthetic photos and owner/member/third/outsider browser flows; iOS Simulator Mobile Safari layout (not a physical device). Two independent reviews with fixes applied.",
-    "remaining": "Physical iPhone/Android and screen-reader validation, large-account erasure timing, and W06 admin processing remain.",
+    "remaining": "Physical iPhone/Android and screen-reader validation, large-account erasure timing and final operator/contact/retention policies remain; W06 admin processing is implemented.",
     "database": "Additive migrations 20261022000000_service_support, 20261023000000_content_reports, 20261024000000_user_blocks and index-only 20261025000000_notification_erasure_indexes. Rollback: drop the four new tables/enums and two indexes and their migration records; completed account deletions are not reversible."
   },
   "adminOperations": {
-    "scope": "W06 admin on feature/admin-operations (develop + uncommitted review fixes), OpenAPI 0.19.0.",
+    "scope": "W06 merged via PR #16 (f33dc49); implementation 031dab9; OpenAPI now 0.26.0 with W07 extensions.",
     "authentication": "Separate admin_accounts/admin_sessions/admin_audit_logs and cookie woori_admin_session (__Host- in production, SameSite=Strict); TOTP MFA; 8 h absolute / 30 min idle / 10 min pre-MFA; 10 min re-auth for views and sensitive actions; lockout and rate limits; first admin only via pnpm admin:create (owner connection, password via TTY or stdin).",
-    "requests": "Every /v1/admin request needs X-Woori-Request: 1 and, when present, Origin == ADMIN_WEB_ORIGIN; member sessions never authorize admin routes and the admin origin is rejected on member routes.",
+    "requests": "Admin JSON requests require X-Woori-Request: 1 and configured Origin checks. Only the dedicated native-video GET/HEAD route substitutes an exact admin Origin plus server-signed session/photo/audit-bound ticket; current session, MFA and recent reauthentication remain mandatory. Member sessions never authorize admin routes.",
     "content": "Notices draft/publish/schedule(≤90 days)/archive; inquiry answers/status; reports review/dismiss/resolve (DELETE_CONTENT or SUSPEND_USER, same-target auto-resolve, 409 when closed); photo (display variant only, no-store) and comment views need reason + re-auth and are audited, 120/hour per admin.",
     "members": "List/search with masked email, detail counts, rename, suspend/unsuspend/delete (re-auth; delete reuses member deletion core; owned groups → 409). Suspension blocks own access only; suspended members stay in rosters, report/block targets and notification actors.",
-    "groups": "Read-only group/album/photo metadata (album photo list audited); metrics with mail: null until W07.",
+    "groups": "Read-only group/album/photo metadata (album photo list audited); worker, queue and mail metrics implemented in W07.",
     "audit": "Append-only (runtime SELECT/INSERT); metadata whitelist of enums/UUIDs; no-op mutations returning personal data write *_VIEWED.",
     "grants": "admin_accounts SELECT + 6 login-state columns; admin_sessions SELECT/INSERT + 7-column UPDATE; admin_audit_logs SELECT/INSERT; notices INSERT + column UPDATE; inquiries/content_reports column UPDATE.",
     "remaining": "User must set ADMIN_WEB_ORIGIN/ADMIN_TOTP_ENCRYPTION_KEY and create the first admin; retention periods undecided; suspended group owner limitation."
   },
   "familyBeta": {
-    "scope": "W07 on feature/family-beta-ops, OpenAPI 0.25.0",
+    "scope": "W07 baseline merged via PR #17 (a095cc1); follow-up on fix/production-readiness; production acceptance pending. Video proxy follow-up aligns with OpenAPI 0.26.0.",
     "notifications": "Upload bundles per uploader+album 10-min window (first READY anchor, ~2-min delayed push, follow-up replaces by tag); reaction bundles per photo 30-min; quiet-hours release one push per bundle; partial unique index keeps one waiting delivery per notification/installation.",
     "albums": "Cursor pagination (30, ALBUM_CURSOR_INVALID), KST startDate/endDate from visible READY media, coverMediaKind, videoCount.",
-    "video": "mp4/mov ≤60.5 s and ≤200 MB, ffprobe validation, worker ffmpeg H.264/AAC ≤1080p CRF 23 faststart with metadata stripped, WebP posters, original deleted, signed play/download URLs (600 s), admin audited view, separate media loop with one video per pass, 15-min lease, size-proportional upload window (10–60 min).",
-    "operations": "Encrypted mail outbox (token-atomic, retries, Idempotency-Key, payload wiped), worker heartbeats with busy job and queue-lag admin metrics, scripts/r2-backup.mjs (dry-run default, manifest-based prune guards), production config validation, deploy/railway.*.json, deploy/worker.Dockerfile, deploy/r2-cors.production.json."
+    "video": "mp4/mov ≤60.5 s and ≤200 MB, ffprobe validation, worker ffmpeg H.264/AAC ≤1080p CRF 23 faststart with metadata stripped, WebP posters, original deleted, authenticated API play/download streams with per-request permission checks and Range support; admin audited, session-bound access, separate media loop with one video per pass, 15-min lease, size-proportional upload window (10–60 min).",
+    "operations": "Encrypted mail outbox (token-atomic, retries, Idempotency-Key, payload wiped), worker heartbeats with busy job and queue-lag admin metrics, scripts/r2-backup.mjs (dry-run default, manifest-based prune guards), production config validation, deploy/railway.*.json, deploy/worker.Dockerfile, deploy/r2-cors.production.json.",
+    "videoSecurityFollowup": "fix/production-readiness: API streams replace R2 GET links; membership/session/block checks for each request; previously issued R2 URLs can survive up to their original 600-second expiry. In-flight/downloaded bytes cannot be recalled. New API requires matching updated web/admin; refresh stale clients after coordinated rollout.",
+    "readinessVerification": "2026-10-16: client 261 functional tests, 321-file boundaries, types/lint and plain-copy production Pages builds (29 web/18 admin) passed. Baseline worker linux/arm64 image/Debian ffmpeg synthetic conversion passed. Actual development R2 synthetic full/range byte checks, abort and own-object cleanup passed. Chrome UI validation blocked with ERR_BLOCKED_BY_CLIENT (also user direct navigation); no production/physical-device acceptance claimed. Server final build/typecheck, 139 unit and 199 isolated PostgreSQL integration tests passed. Existing local/production databases and grants were not modified."
   }
 }

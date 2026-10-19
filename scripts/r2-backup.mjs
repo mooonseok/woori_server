@@ -1,4 +1,4 @@
-// Weekly copy of the private production R2 bucket into the separate backup
+// Daily copy of the private production R2 bucket into the separate backup
 // bucket (W07-4). Dry-run by default; `--apply` copies new/changed objects
 // server-side. Nothing is ever deleted from the backup unless
 // `--apply --prune-older-than <days>` (>= 7) is given explicitly, and then only
