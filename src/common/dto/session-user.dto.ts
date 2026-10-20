@@ -3,6 +3,8 @@ export interface SessionUser {
   id: string;
   username: string;
   displayName: string;
+  nickname: string;
+  nicknameNeedsUpdate: boolean;
   email: string;
   emailVerified: boolean;
 }

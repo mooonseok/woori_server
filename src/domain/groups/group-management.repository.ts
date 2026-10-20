@@ -93,7 +93,7 @@ export class GroupManagementRepository {
           joinedAt: true,
           user: {
             select: {
-              displayName: true,
+              nickname: true,
               // Only this viewer's own block; roster membership is unchanged.
               blockedBy: {
                 where: { blockerId: userId },
@@ -108,7 +108,8 @@ export class GroupManagementRepository {
       return {
         members: rows.map(({ user, ...row }) => ({
           ...row,
-          displayName: user.displayName,
+          displayName: user.nickname,
+          nickname: user.nickname,
           blockedByMe: user.blockedBy.length > 0,
         })),
         nextCursor: more ? rows.at(-1)!.userId : null,

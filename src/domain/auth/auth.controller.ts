@@ -114,7 +114,7 @@ export class AuthController {
   }
   @Patch('profile')
   profile(@CurrentUser() user: SessionUser, @Body() dto: UpdateProfileDto) {
-    return this.recovery.profile(user.id, dto.displayName);
+    return this.recovery.profile(user.id, dto);
   }
   @Get('me')
   me(@CurrentUser() user: SessionUser) {

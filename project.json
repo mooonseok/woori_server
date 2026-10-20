@@ -44,7 +44,8 @@
     "authenticated password/email changes with current-password reauthentication, single-use account-bound email confirmation and all-session/push revocation",
     "member account deletion with ownership preflight, password reauthentication, atomic identity/private-record erasure, shared-content retention and fresh-signup isolation",
     "read-only published notices; member inquiries with own list/detail and exact rolling 24-hour limit; operator-only photo/comment/member reports with own status list",
-    "personal one-directional user blocks hiding blocked members' photos, comments, reactions, memories and notifications/push for the blocker only; block-time notification erasure; roster blockedByMe and photo uploader exposure"
+    "personal one-directional user blocks hiding blocked members' photos, comments, reactions, memories and notifications/push for the blocker only; block-time notification erasure; roster blockedByMe and photo uploader exposure",
+    "separate public nickname and private recovery name; NFC-normalized 2–20 character duplicate-friendly signup/profile nicknames; neutral legacy aliases with update prompt flag; nickname-only social projections and account deletion erasure"
   ],
   "notImplemented": [
     "production Supabase/Railway/R2 provisioning and deployment",
@@ -213,5 +214,19 @@
     "operations": "Encrypted mail outbox (token-atomic, retries, Idempotency-Key, payload wiped), worker heartbeats with busy job and queue-lag admin metrics, scripts/r2-backup.mjs (dry-run default, manifest-based prune guards), production config validation, deploy/railway.*.json, deploy/worker.Dockerfile, deploy/r2-cors.production.json.",
     "videoSecurityFollowup": "fix/production-readiness: API streams replace R2 GET links; membership/session/block checks for each request; previously issued R2 URLs can survive up to their original 600-second expiry. In-flight/downloaded bytes cannot be recalled. New API requires matching updated web/admin; refresh stale clients after coordinated rollout.",
     "readinessVerification": "2026-10-16: client 261 functional tests, 321-file boundaries, types/lint and plain-copy production Pages builds (29 web/18 admin) passed. Baseline worker linux/arm64 image/Debian ffmpeg synthetic conversion passed. Actual development R2 synthetic full/range byte checks, abort and own-object cleanup passed. Chrome UI validation blocked with ERR_BLOCKED_BY_CLIENT (also user direct navigation); no production/physical-device acceptance claimed. Server final build/typecheck, 139 unit and 199 isolated PostgreSQL integration tests passed. Existing local/production databases and grants were not modified."
+  },
+  "memberNickname": {
+    "migration": "20261101000000_member_nickname",
+    "privateRecoveryName": "displayName remains self/admin-only and continues name/email recovery",
+    "compatibility": "signup nickname omission gets a neutral generated value; social displayName aliases nickname; self profile name editing preserved",
+    "deployment": "Apply migration before API/worker rollout, then publish client. Production database and deployed apps have not been modified for this feature.",
+    "contractVersion": "0.27.0",
+    "verification": "2026-10-20: 142 unit tests and full 201 isolated integration tests passed; final expanded nickname/signup/rollback-only upgrade test file 2/2 passed. Prisma schema, policy, types/build, format and diff checks passed. Actual isolated PostgreSQL API + Chrome: cross-account nickname visibility, nickname/name independent editing, invalid short input, duplicate nickname, legacy prompt clearing.",
+    "localDatabase": "2026-10-20 user-approved 20261101000000_member_nickname applied only to 127.0.0.1:55439/woori_dev. Three existing users received neutral temporary nicknames; identity field hashes and content counts unchanged (3 users,1 group,0 photos,0 comments); runtime SELECT on new columns passed. No new grants."
+  },
+  "neutralProductCopy": {
+    "scope": "Group-based private sharing without family-only positioning; public UI, metadata, examples and generic push copy updated. Member-authored content and chosen nicknames are preserved.",
+    "verification": "2026-10-20: no family-specific Korean copy remains in web/admin runtime source, public assets or server source/contracts/schema; client 292 functional tests/types/format and server build plus 9 focused unit and 2 isolated PostgreSQL tests passed. Chrome desktop public home and signup copy/layout checked against the local API; mobile emulation was not rerun for this copy-only follow-up.",
+    "migration": "20261102000000_neutral_member_copy: generated defaults use 회원_; only untouched generated 가족_<8 hex> nicknames are renamed. Applied only to local 127.0.0.1:55439/woori_dev; 3 generated nicknames updated, identity fields and content counts preserved. Existing chosen nicknames are unchanged. Production not changed."
   }
 }

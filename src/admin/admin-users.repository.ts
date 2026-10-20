@@ -15,6 +15,7 @@ type UserRow = {
   id: string;
   username: string;
   displayName: string;
+  nickname: string;
   email: string;
   status: string;
   emailVerified: boolean;
@@ -45,7 +46,7 @@ export function maskEmail(email: string, status: string) {
 export function likeLiteral(value: string) {
   return value.replace(/[\\%_]/g, (char) => `\\${char}`);
 }
-const userColumns = Prisma.sql`u.id,u.username,u."displayName",u.email,u.status::text AS status,(u."verifiedAt" IS NOT NULL) AS "emailVerified",u."createdAt",
+const userColumns = Prisma.sql`u.id,u.username,u."displayName",u.nickname,u.email,u.status::text AS status,(u."verifiedAt" IS NOT NULL) AS "emailVerified",u."createdAt",
   (SELECT count(*)::int FROM woori.memberships m JOIN woori.groups g ON g.id=m."groupId" AND g.status='ACTIVE' WHERE m."userId"=u.id AND m.status='ACTIVE') AS "activeGroupCount"`;
 // Minimal metadata only: never password hashes, sessions, push data or the
 // full email address.
@@ -54,6 +55,7 @@ function summary(row: UserRow) {
     id: row.id,
     username: row.username,
     displayName: row.displayName,
+    nickname: row.nickname,
     emailMasked: maskEmail(row.email, row.status),
     status: row.status,
     emailVerified: row.emailVerified,

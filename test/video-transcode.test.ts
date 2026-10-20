@@ -451,5 +451,5 @@ test('notification text counts photos and videos of a bundle', () => {
     pushBody({ ...row, kind: 'COMMENT', count: 1, mediaKind: 'VIDEO' }, true),
     '엄마님이 내 동영상에 댓글을 남겼어요.'
   );
-  assert.equal(pushBody(row, false), '가족의 새로운 소식이 있어요.');
+  assert.equal(pushBody(row, false), '새로운 소식이 있어요.');
 });

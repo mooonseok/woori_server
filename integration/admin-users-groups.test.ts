@@ -359,6 +359,7 @@ test('isolated PostgreSQL: admin member and group management, suspension, deleti
           'emailMasked',
           'emailVerified',
           'id',
+          'nickname',
           'status',
           'username',
         ]);
@@ -683,6 +684,7 @@ test('isolated PostgreSQL: admin member and group management, suspension, deleti
               'blockedByMe',
               'displayName',
               'joinedAt',
+              'nickname',
               'role',
               'userId',
             ]);

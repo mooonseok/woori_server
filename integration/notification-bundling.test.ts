@@ -92,6 +92,7 @@ test('isolated PostgreSQL: W07 upload/reaction notification bundles', async (t) 
           username: `${label}_${suffix}`,
           email: `${label}_${suffix}@example.test`,
           displayName: label,
+          nickname: label,
           passwordHash: fixtureHash,
           verifiedAt: new Date(),
         },
@@ -474,7 +475,11 @@ test('isolated PostgreSQL: W07 upload/reaction notification bundles', async (t) 
         assert.equal(entry.albumTitle, '첫 앨범');
         assert.equal(entry.photoId, latestPhoto);
         assert.equal(entry.commentId, null);
-        assert.deepEqual(entry.actor, { id: mom.id, displayName: mom.name });
+        assert.deepEqual(entry.actor, {
+          id: mom.id,
+          displayName: mom.name,
+          nickname: mom.name,
+        });
         assert.equal(entry.latestSequence, 5);
         assert.equal(entry.readThroughSequence, 0);
         assert.equal(entry.unread, true);
@@ -496,7 +501,7 @@ test('isolated PostgreSQL: W07 upload/reaction notification bundles', async (t) 
           latestSequence: 5,
           mediaKind: 'PHOTO',
           navigation: 'ALBUM',
-          uploader: { id: mom.id, displayName: mom.name },
+          uploader: { id: mom.id, displayName: mom.name, nickname: mom.name },
         });
         // Not due yet: nothing is fanned out or sent before the delay.
         await dispatch();
@@ -822,7 +827,11 @@ test('isolated PostgreSQL: W07 upload/reaction notification bundles', async (t) 
         assert.equal(entry.count, 3);
         assert.equal(entry.navigation, 'PHOTO');
         assert.equal(entry.photoId, kidPhoto);
-        assert.deepEqual(entry.actor, { id: aunt.id, displayName: aunt.name });
+        assert.deepEqual(entry.actor, {
+          id: aunt.id,
+          displayName: aunt.name,
+          nickname: aunt.name,
+        });
         assert.equal(
           (
             await kid.agent

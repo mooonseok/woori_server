@@ -42,6 +42,7 @@ test('isolated PostgreSQL: group lifecycle, content retention and durable deleti
         .send({
           username: `${label}_${suffix}`,
           displayName: label,
+          nickname: label,
           email: `${label}_${suffix}@example.test`,
           password: 'group-integration-password-2026',
         })
@@ -112,6 +113,7 @@ test('isolated PostgreSQL: group lifecycle, content retention and durable deleti
           'blockedByMe',
           'displayName',
           'joinedAt',
+          'nickname',
           'role',
           'userId',
         ]);

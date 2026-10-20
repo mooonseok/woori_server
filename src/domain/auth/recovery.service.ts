@@ -88,10 +88,13 @@ export class RecoveryService {
       await hashPassword(dto.newPassword)
     );
   }
-  async profile(userId: string, displayName: string) {
+  async profile(
+    userId: string,
+    profile: { displayName?: string; nickname?: string }
+  ) {
     await this.limits.consume(`profile:${userId}`, 20);
     return {
-      user: publicUser(await this.repository.profile(userId, displayName)),
+      user: publicUser(await this.repository.profile(userId, profile)),
     };
   }
 }

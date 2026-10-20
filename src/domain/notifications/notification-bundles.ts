@@ -115,7 +115,7 @@ export function pushBody(
   },
   preview: boolean
 ) {
-  if (!preview) return '가족의 새로운 소식이 있어요.';
+  if (!preview) return '새로운 소식이 있어요.';
   const count = Math.max(1, row.count);
   const media = row.mediaKind === 'VIDEO' ? '동영상' : '사진';
   switch (row.kind) {

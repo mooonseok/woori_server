@@ -56,6 +56,7 @@ test('isolated PostgreSQL: personal one-directional user blocks', async (t) => {
           username: `${label}_${suffix}`,
           email: `${label}_${suffix}@example.test`,
           displayName: label,
+          nickname: label,
           passwordHash: fixtureHash,
           verifiedAt: new Date(),
         },
@@ -322,6 +323,7 @@ test('isolated PostgreSQL: personal one-directional user blocks', async (t) => {
         assert.deepEqual(Object.keys(first.body).sort(), [
           'blockedAt',
           'displayName',
+          'nickname',
           'userId',
         ]);
         assert.equal(first.body.userId, b.id);
@@ -370,7 +372,7 @@ test('isolated PostgreSQL: personal one-directional user blocks', async (t) => {
           .photos;
         assert.deepEqual(
           listed.find((item: { id: string }) => item.id === pB).uploader,
-          { id: b.id, displayName: 'b_member_b' }
+          { id: b.id, displayName: 'b_member_b', nickname: 'b_member_b' }
         );
         const stale = await a.agent
           .get(`${album}/photos`)
@@ -475,6 +477,7 @@ test('isolated PostgreSQL: personal one-directional user blocks', async (t) => {
         assert.deepEqual(cToday.photo.uploader, {
           id: b.id,
           displayName: 'b_member_b',
+          nickname: 'b_member_b',
         });
         assert.equal(cToday.uploader, undefined);
         assert.ok(!(await memoryIds(a.agent, 'hidden')).includes(pB3));
@@ -502,6 +505,7 @@ test('isolated PostgreSQL: personal one-directional user blocks', async (t) => {
         assert.deepEqual(edited.uploader, {
           id: a.id,
           displayName: 'b_owner_a',
+          nickname: 'b_owner_a',
         });
         const queued = await photo(a.id, 50);
         await admin.query(
@@ -515,13 +519,14 @@ test('isolated PostgreSQL: personal one-directional user blocks', async (t) => {
         assert.deepEqual(processing.photo.uploader, {
           id: a.id,
           displayName: 'b_owner_a',
+          nickname: 'b_owner_a',
         });
         const uploads = (await a.agent.get(`${album}/uploads`).expect(200)).body
           .uploads;
         assert.deepEqual(
           uploads.find((item: { photoId: string }) => item.photoId === queued)
             .photo.uploader,
-          { id: a.id, displayName: 'b_owner_a' }
+          { id: a.id, displayName: 'b_owner_a', nickname: 'b_owner_a' }
         );
         const kept = (
           await admin.query(
@@ -644,6 +649,7 @@ test('isolated PostgreSQL: personal one-directional user blocks', async (t) => {
         assert.deepEqual(controlTarget.uploader, {
           id: a.id,
           displayName: 'b_owner_a',
+          nickname: 'b_owner_a',
         });
         assert.equal(await dispatcher.eligibility(hidden.deliveryId), null);
         const eligible = await dispatcher.eligibility(control.deliveryId);
@@ -759,6 +765,7 @@ test('isolated PostgreSQL: personal one-directional user blocks', async (t) => {
           assert.deepEqual(Object.keys(item).sort(), [
             'blockedAt',
             'displayName',
+            'nickname',
             'userId',
           ]);
         assert.equal(all.items[1].blockedAt, blockedAt);
@@ -869,6 +876,7 @@ test('isolated PostgreSQL: personal one-directional user blocks', async (t) => {
         assert.deepEqual(offTarget.uploader, {
           id: b.id,
           displayName: 'b_member_b',
+          nickname: 'b_member_b',
         });
         assert.equal((await albumSummary(a.agent)).photoCount, 6);
         assert.ok((await photoIds(a.agent)).includes(pB));

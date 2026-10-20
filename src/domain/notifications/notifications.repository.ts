@@ -61,7 +61,7 @@ export function visible(userId: string) {
     JOIN woori.users recipient ON recipient.id=m."userId" AND recipient.status='ACTIVE'
     JOIN LATERAL (
       SELECT va.*,COUNT(*) OVER () AS count,COUNT(*) FILTER (WHERE va."mediaKind"='VIDEO') OVER () AS "videoCount" FROM (
-        SELECT act.sequence,act."createdAt",u.id AS "actorId",u."displayName" AS "actorName",p.id AS "photoId",p."uploaderId",p."mediaKind"::text AS "mediaKind",a.id AS "albumId",a.title AS "albumTitle",c.id AS "commentId"
+        SELECT act.sequence,act."createdAt",u.id AS "actorId",u.nickname AS "actorName",p.id AS "photoId",p."uploaderId",p."mediaKind"::text AS "mediaKind",a.id AS "albumId",a.title AS "albumTitle",c.id AS "commentId"
         FROM woori.notification_activities act
         JOIN woori.users u ON u.id=act."actorId" AND u.status IN ('ACTIVE','SUSPENDED')
         LEFT JOIN woori.comments c ON n.kind IN ('COMMENT','PIN') AND c.id=n."targetId" AND c."groupId"=g.id AND c."deletedAt" IS NULL
@@ -110,7 +110,7 @@ export function inboxItem({
 }: InboxRow) {
   return {
     ...row,
-    actor: { id: actorId, displayName: actorName },
+    actor: { id: actorId, displayName: actorName, nickname: actorName },
     navigation: navigationFor(row.kind),
     unread: isUnread(row.readThroughSequence, row.latestSequence),
   };
@@ -170,7 +170,7 @@ export class NotificationsRepository {
     const rows = await this.prisma.client.$queryRaw<
       (InboxRow & { uploaderName: string })[]
     >(
-      Prisma.sql`WITH visible AS (${visible(userId)}) SELECT v.*,pu."displayName" AS "uploaderName" FROM visible v JOIN woori.users pu ON pu.id=v."uploaderId" WHERE v.id=${id}::uuid`
+      Prisma.sql`WITH visible AS (${visible(userId)}) SELECT v.*,pu.nickname AS "uploaderName" FROM visible v JOIN woori.users pu ON pu.id=v."uploaderId" WHERE v.id=${id}::uuid`
     );
     if (!rows.length) notificationNotFound();
     const {
@@ -188,6 +188,7 @@ export class NotificationsRepository {
     const uploader = {
       id: rows[0].uploaderId,
       displayName: rows[0].uploaderName,
+      nickname: rows[0].uploaderName,
     };
     return {
       groupId,

@@ -6,7 +6,11 @@ import {
   Length,
   Matches,
   MaxLength,
+  ValidateIf,
 } from 'class-validator';
+const normalizeNickname = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.normalize('NFC').trim() : value;
+const nicknamePattern = /^[\p{L}\p{N} _-]+$/u;
 const normalize = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim().toLowerCase() : value;
 export class LoginDto {
@@ -19,6 +23,12 @@ export class LoginDto {
   password!: string;
 }
 export class SignupDto extends LoginDto {
+  @ValidateIf((_object, value) => value !== undefined)
+  @Transform(normalizeNickname)
+  @IsString()
+  @Length(2, 20)
+  @Matches(nicknamePattern)
+  nickname?: string;
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value
   )
@@ -54,12 +64,21 @@ export class ResetPasswordDto extends ConfirmEmailDto {
   newPassword!: string;
 }
 export class UpdateProfileDto {
+  @ValidateIf(
+    (object, value) => value !== undefined || object.displayName === undefined
+  )
+  @Transform(normalizeNickname)
+  @IsString()
+  @Length(2, 20)
+  @Matches(nicknamePattern)
+  nickname?: string;
+  @ValidateIf((_object, value) => value !== undefined)
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value
   )
   @IsString()
   @Length(1, 80)
-  displayName!: string;
+  displayName?: string;
 }
 
 export class ChangePasswordDto {
