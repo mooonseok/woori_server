@@ -17,9 +17,17 @@ import {
 } from '../src/common/configurations/production.config';
 import { startupFailure } from '../src/common/configurations/startup-diagnostics';
 import {
+  BACKUP_LAST_SUCCESS_KEY,
+  BACKUP_MANIFEST_KEY,
+  BACKUP_PREFIXES,
   BackupSafetyError,
+  MAX_BACKUP_MANIFEST_BYTES,
+  backupFailureSummary,
+  lastSuccessRecord,
+  manifestSizeStatus,
   parseBackupManifest,
   planR2Backup,
+  sourceGone,
 } from '../src/common/media/r2-backup';
 import {
   MailDeliveryError,
@@ -530,4 +538,65 @@ test('R2 backup stops on an empty source, a suspicious target or a large prune',
   });
   assert.equal(small.pruneBlocked, null);
   assert.equal(small.prune.length, 5);
+});
+
+test('daily R2 backup: deleted sources skip, failures name only the SDK error, success is recorded', () => {
+  // Deleted between listing and copy is normal; a missing bucket is not.
+  assert.equal(sourceGone({ name: 'NoSuchKey' }), true);
+  for (const error of [
+    { name: 'NoSuchBucket', $metadata: { httpStatusCode: 404 } },
+    { name: 'AccessDenied' },
+    new Error('x'),
+    null,
+  ])
+    assert.equal(sourceGone(error), false);
+  assert.deepEqual(
+    backupFailureSummary({
+      name: 'AccessDenied',
+      message: 'Access Denied for bucket woori-private key photos/a',
+      $metadata: { httpStatusCode: 403, requestId: 'r' },
+    }),
+    { status: 'failed', error: 'AccessDenied', httpStatus: 403 }
+  );
+  // Odd names and messages never leak; a plain error stays generic.
+  assert.deepEqual(
+    backupFailureSummary({ name: 'https://x.example/photos/a secret' }),
+    { status: 'failed', error: 'Error', httpStatus: null }
+  );
+  assert.deepEqual(backupFailureSummary(undefined), {
+    status: 'failed',
+    error: 'Error',
+    httpStatus: null,
+  });
+  // The marker and manifest live outside the listed photo prefix.
+  for (const key of [BACKUP_LAST_SUCCESS_KEY, BACKUP_MANIFEST_KEY])
+    assert.ok(!BACKUP_PREFIXES.some((prefix) => key.startsWith(prefix)));
+  assert.deepEqual(
+    lastSuccessRecord({
+      sourceBucket: 'woori-media',
+      startedAt: new Date('2026-10-20T18:30:00Z'),
+      finishedAt: new Date('2026-10-20T18:31:05Z'),
+      sourceObjects: 12,
+      copied: 2,
+      unchanged: 9,
+      sourceGone: 1,
+    }),
+    {
+      version: 1,
+      sourceBucket: 'woori-media',
+      startedAt: '2026-10-20T18:30:00.000Z',
+      finishedAt: '2026-10-20T18:31:05.000Z',
+      sourceObjects: 12,
+      copied: 2,
+      unchanged: 9,
+      sourceGone: 1,
+    }
+  );
+  assert.equal(manifestSizeStatus(1024), 'ok');
+  assert.equal(
+    manifestSizeStatus(Math.floor(MAX_BACKUP_MANIFEST_BYTES * 0.8) + 1),
+    'near-limit'
+  );
+  assert.equal(manifestSizeStatus(MAX_BACKUP_MANIFEST_BYTES), 'near-limit');
+  assert.equal(manifestSizeStatus(MAX_BACKUP_MANIFEST_BYTES + 1), 'too-large');
 });

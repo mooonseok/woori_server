@@ -48,21 +48,20 @@
     "separate public nickname and private recovery name; NFC-normalized 2–20 character duplicate-friendly signup/profile nicknames; neutral legacy aliases with update prompt flag; nickname-only social projections and account deletion erasure"
   ],
   "notImplemented": [
-    "production Supabase/Railway/R2 provisioning and deployment",
+    "production end-to-end acceptance of the Lightsail API/worker deployment (sign-up mail, media, push, admin) (W07)",
     "native refresh tokens",
-    "production backup and restore validation",
-    "native FCM/APNs subscriptions and dispatch, upload/reaction push bundling",
+    "Lightsail daily R2 backup schedule, latest-success monitoring and production restore drill",
+    "native FCM/APNs subscriptions and dispatch (web push upload/reaction bundling is implemented)",
     "production Web Push setup and iPhone/Android physical-device receipt verification",
     "automatic memory push notifications",
     "global bucket orphan inventory and automatic orphan deletion",
     "HEIC pixel decoding and physical-device photo workflow validation",
     "operator identity, privacy contact, retention periods and finalized privacy policy text (placeholders shown)",
-    "album cover selection and album date range",
-    "server-side album search/sort and album pagination beyond 50; taken-date sort is demo-only",
+    "manual album cover selection (automatic cover and album date range are implemented)",
+    "server-side album search and taken-date sort; taken-date sort is demo-only (album cursor pagination is implemented)",
     "group join approval and join notifications (enum/preference only)",
     "admin group mutation and ownership transfer (suspended group owner limitation)",
     "audit-log, report and inquiry retention periods (undecided)",
-    "production provisioning and HTTPS deployment acceptance (W07)",
     "join notifications, join approval, memory pushes, manual album cover, server album search/taken-date sort (after beta)"
   ],
   "deployment": {
@@ -76,8 +75,9 @@
     "mail": "Resend from the mail.woori.stream subdomain with SPF/DKIM/DMARC",
     "backup": "Supabase daily backups (7 days) + daily R2 copy to a separate private backup bucket; monthly restore drill; RPO target 24 h, RTO target half a day; no PITR. Scheduling, latest-success monitoring and restore verification are not deployed.",
     "costCap": "Previous Railway USD45 alert/USD60 hard cap is superseded. Lightsail/AWS billing alerts and budgets are not configured; initial size remains subject to load verification.",
-    "status": "Production DB provisioned and verified 2026-10-16. As of 2026-10-19, user reports Lightsail API/worker Docker running, production R2 configured and Pages woori.stream login accessible. This documentation update did not independently reverify those reports. Production end-to-end acceptance, physical devices and daily backup scheduling/restore remain unverified.",
-    "backupSchedule": "Daily 03:00 KST copy-only backup remains planned. deploy/railway.backup.json is a legacy template, not active. Lightsail scheduler, successful-backup-age monitoring and restore drill pending."
+    "status": "Production DB provisioned and verified 2026-10-16. As of 2026-10-19, user reports Lightsail API/worker Docker running, production R2 configured and Pages woori.stream login accessible. 2026-10-20 external read-only checks: api.woori.stream healthz/readyz 200 via Caddy, Node port 3001 closed, both web origins pass CORS preflight; production DB has 19 of 21 migrations (20261101000000_member_nickname and 20261102000000_neutral_member_copy pending); the last recorded image woori-server:20261019-1 matches c940d04 source (pre-nickname); woori.stream serves a pre-v4.1 build; admin.woori.stream has no DNS record. Production end-to-end acceptance, physical devices and daily backup scheduling/restore remain unverified.",
+    "backupSchedule": "Daily copy-only R2 backup: deploy/lightsail/woori-r2-backup.{service,timer} + r2-backup-run.sh templates (03:30 KST, flock, release image, optional Healthchecks-style ping) are prepared but not installed on the worker host. Successful runs write _woori-backup/last-success.json. deploy/railway.backup.json is a legacy template, not active. Dead-man monitoring service/recipient, Supabase backup time alignment and restore drill pending.",
+    "release": "scripts/release-image.mjs builds the shared API/worker image (linux/amd64) from a pushed commit via git archive, verifies worker --check and scripts/release-smoke.cjs with networking disabled, and writes ~/.woori/releases/<KST date>-<sha7>/ (image tar.gz, SHA256SUMS, release.json with deployable flag and latest migration). /healthz.release and the worker start log name the commit (WOORI_RELEASE); images before this change report none."
   },
   "entryPoints": {
     "api": "dist/src/main.js",
@@ -228,5 +228,10 @@
     "scope": "Group-based private sharing without family-only positioning; public UI, metadata, examples and generic push copy updated. Member-authored content and chosen nicknames are preserved.",
     "verification": "2026-10-20: no family-specific Korean copy remains in web/admin runtime source, public assets or server source/contracts/schema; client 292 functional tests/types/format and server build plus 9 focused unit and 2 isolated PostgreSQL tests passed. Chrome desktop public home and signup copy/layout checked against the local API; mobile emulation was not rerun for this copy-only follow-up.",
     "migration": "20261102000000_neutral_member_copy: generated defaults use 회원_; only untouched generated 가족_<8 hex> nicknames are renamed. Applied only to local 127.0.0.1:55439/woori_dev; 3 generated nicknames updated, identity fields and content counts preserved. Existing chosen nicknames are unchanged. Production not changed."
+  },
+  "releaseReadiness": {
+    "scope": "feature/release-readiness: release identification and reproducible server release images; OpenAPI 0.28.0 (/healthz release, /readyz push reflects loaded push keys). No database migration.",
+    "contractVersion": "0.28.0",
+    "productionRollout": "Pending user approval: apply the two nickname migrations to production, then API/worker from the same pushed commit, then member web; admin web needs its Pages project and DNS first."
   }
 }

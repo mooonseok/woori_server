@@ -1,0 +1,16 @@
+# Daily R2 copy (production -> backup bucket) on the Lightsail worker host.
+# Template; install with woori-r2-backup.timer and r2-backup-run.sh (SETUP.md).
+[Unit]
+Description=Woori R2 daily backup (copy only, no prune)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/woori/r2-backup.conf
+ExecStart=/usr/local/lib/woori/r2-backup-run.sh
+# No ExecStopPost cleanup: it would also remove a run that holds the lock. A
+# container left by a killed client is removed by the next locked run.
+TimeoutStartSec=3h
+Nice=10

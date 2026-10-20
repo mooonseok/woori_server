@@ -1,0 +1,12 @@
+# Once a day after the Supabase daily backup window (confirm that time and
+# adjust). Persistent runs a missed schedule after the host comes back.
+[Unit]
+Description=Woori R2 daily backup timer
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 Asia/Seoul
+RandomizedDelaySec=5m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
