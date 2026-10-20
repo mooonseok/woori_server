@@ -71,7 +71,7 @@ export class MemoriesRepository {
         older = Prisma.sql`AND (${dateExpression},p.id)<(${anchor[0].date}::date,${q.cursor}::uuid)`;
       }
       const rows = await tx.$queryRaw<PhotoRow[]>(
-        Prisma.sql`SELECT p.id,p."groupId",p."albumId",p."uploaderId",p.width,p.height,p."capturedAt",p."manualCapturedDate",p."captureDateSource",p."createdAt",p.status,p."mediaKind"::text AS "mediaKind",p."durationMs",a.title AS "albumTitle",up."displayName" AS "uploaderName",${dateExpression} AS "effectiveDate" ${visible} ${older} ORDER BY ${dateExpression} DESC,p.id DESC LIMIT ${q.limit + 1}`
+        Prisma.sql`SELECT p.id,p."groupId",p."albumId",p."uploaderId",p.width,p.height,p."capturedAt",p."manualCapturedDate",p."captureDateSource",p."createdAt",p.status,p."mediaKind"::text AS "mediaKind",p."durationMs",a.title AS "albumTitle",up.nickname AS "uploaderName",${dateExpression} AS "effectiveDate" ${visible} ${older} ORDER BY ${dateExpression} DESC,p.id DESC LIMIT ${q.limit + 1}`
       );
       const more = rows.length > q.limit;
       if (more) rows.pop();
@@ -83,7 +83,7 @@ export class MemoriesRepository {
           photo: this.photos.summary(
             {
               ...row,
-              uploader: { id: row.uploaderId, displayName: row.uploaderName },
+              uploader: { id: row.uploaderId, nickname: row.uploaderName },
             },
             owner || row.uploaderId === userId
           ),

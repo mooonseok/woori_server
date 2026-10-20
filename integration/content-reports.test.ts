@@ -58,6 +58,7 @@ test('isolated PostgreSQL: operator-only content and member reports', async (t) 
           username: `${label}_${suffix}`,
           email: `${label}_${suffix}@example.test`,
           displayName: label,
+          nickname: label,
           passwordHash: fixtureHash,
           verifiedAt: new Date(),
         },

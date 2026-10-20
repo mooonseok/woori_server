@@ -99,7 +99,7 @@ test('comment capabilities permit owner moderation but never editing another aut
     x: null,
     y: null,
     createdAt: new Date(),
-    author: { id: 'author', displayName: '가족' },
+    author: { id: 'author', nickname: '가족' },
   };
   const author = commentSummary(comment, 'author', false);
   assert.equal(author.canEdit, true);

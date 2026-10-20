@@ -186,7 +186,7 @@ test('push text: bundle counts with preview, generic without, never URLs', () =>
     '아빠님이 내 사진에 위치 댓글을 남겼어요.'
   );
   for (const row of [photos, reaction])
-    assert.equal(pushBody(row, false), '가족의 새로운 소식이 있어요.');
+    assert.equal(pushBody(row, false), '새로운 소식이 있어요.');
   assert.doesNotMatch(pushBody(photos, true), /https?:|objectKey/);
 });
 

@@ -105,12 +105,20 @@ export class RecoveryRepository {
       await revokeAccountCredentials(tx, user.id, now);
     });
   }
-  async profile(userId: string, displayName: string) {
+  async profile(
+    userId: string,
+    profile: { displayName?: string; nickname?: string }
+  ) {
     return this.prisma.client.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM woori.users WHERE id=${userId}::uuid FOR UPDATE`;
       const updated = await tx.user.updateMany({
         where: { id: userId, status: 'ACTIVE' },
-        data: { displayName },
+        data: {
+          ...profile,
+          ...(profile.nickname !== undefined
+            ? { nicknameNeedsUpdate: false }
+            : {}),
+        },
       });
       if (!updated.count) throw new UnauthorizedException();
       return tx.user.findUniqueOrThrow({ where: { id: userId } });

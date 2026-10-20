@@ -34,7 +34,7 @@ const variantKind: Record<MediaVariant['kind'], string> = {
 // Every MediaPhoto response names its uploader (withdrawn accounts already
 // read '탈퇴한 회원').
 export const photoUploader = {
-  select: { id: true, displayName: true },
+  select: { id: true, nickname: true },
 } satisfies Prisma.UserDefaultArgs;
 export const photoSummary = {
   id: true,
@@ -401,7 +401,7 @@ export class PhotosRepository {
     return result.count;
   }
   processingSummary(
-    photo: Photo & { uploader: { id: string; displayName: string } }
+    photo: Photo & { uploader: { id: string; nickname: string } }
   ) {
     const status =
       photo.status === 'READY'
@@ -877,7 +877,7 @@ export class PhotosRepository {
       status: string;
       mediaKind: string;
       durationMs: number | null;
-      uploader: { id: string; displayName: string };
+      uploader: { id: string; nickname: string };
     },
     canDelete = true
   ) {
@@ -898,7 +898,8 @@ export class PhotosRepository {
       canDelete,
       uploader: {
         id: photo.uploader.id,
-        displayName: photo.uploader.displayName,
+        displayName: photo.uploader.nickname,
+        nickname: photo.uploader.nickname,
       },
     };
   }

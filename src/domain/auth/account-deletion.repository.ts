@@ -164,6 +164,8 @@ export class AccountDeletionRepository {
                 username: `deleted.${tombstone}`,
                 email: `${tombstone}@deleted.invalid`,
                 displayName: '탈퇴한 회원',
+                nickname: '탈퇴한 회원',
+                nicknameNeedsUpdate: false,
                 passwordHash: '',
                 verifiedAt: null,
               },

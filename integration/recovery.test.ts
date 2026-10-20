@@ -67,6 +67,8 @@ test('isolated PostgreSQL: recovery, profile and session reset boundaries', asyn
       .send(account)
       .expect(201);
     const userId = signup.body.user.id;
+    assert.match(signup.body.user.nickname, /^회원_[a-f0-9]{8}$/);
+    assert.equal(signup.body.user.nicknameNeedsUpdate, true);
     await mutate(other.post('/v1/auth/signup')).send(peer).expect(201);
     const requestReset = () =>
       mutate(api.post('/v1/auth/recovery/password')).send({
@@ -100,6 +102,20 @@ test('isolated PostgreSQL: recovery, profile and session reset boundaries', asyn
           (await other.get('/v1/auth/me')).body.user.displayName,
           peer.displayName
         );
+        const renamed = await mutate(owner.patch('/v1/auth/profile'))
+          .send({ nickname: '  복구별명  ' })
+          .expect(200);
+        assert.equal(renamed.body.user.nickname, '복구별명');
+        assert.equal(renamed.body.user.nicknameNeedsUpdate, false);
+        assert.equal(renamed.body.user.displayName, '새 이름');
+        assert.notEqual(
+          (await other.get('/v1/auth/me')).body.user.nickname,
+          '복구별명'
+        );
+        await mutate(owner.patch('/v1/auth/profile')).send({}).expect(400);
+        await mutate(owner.patch('/v1/auth/profile'))
+          .send({ nickname: null })
+          .expect(400);
         const before = (await mails()).length;
         await mutate(api.post('/v1/auth/recovery/username'))
           .send({ name: account.displayName, email: account.email })

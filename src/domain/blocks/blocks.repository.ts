@@ -30,7 +30,12 @@ function visibleUser(blockerId: string, targetId: string) {
     OR EXISTS (SELECT 1 FROM woori.reactions r JOIN woori.photos p ON p.id=r."photoId" AND p.status='READY' AND p."deletedAt" IS NULL ${blockerGroup('p')} WHERE r."userId"=u.id)
   )`;
 }
-type BlockRow = { userId: string; displayName: string; blockedAt: Date };
+type BlockRow = {
+  userId: string;
+  displayName: string;
+  nickname: string;
+  blockedAt: Date;
+};
 @Injectable()
 export class BlocksRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -41,12 +46,13 @@ export class BlocksRepository {
       // row, so this reveals nothing about arbitrary ids).
       const current = await tx.userBlock.findUnique({
         where: key,
-        include: { blocked: { select: { displayName: true } } },
+        include: { blocked: { select: { nickname: true } } },
       });
       if (current)
         return {
           userId: blockedId,
-          displayName: current.blocked.displayName,
+          displayName: current.blocked.nickname,
+          nickname: current.blocked.nickname,
           blockedAt: current.createdAt,
         };
       if (
@@ -64,7 +70,7 @@ export class BlocksRepository {
       const users = await tx.$queryRaw<
         { id: string; status: string; displayName: string }[]
       >(
-        Prisma.sql`SELECT id,status,"displayName" FROM woori.users WHERE id IN (${Prisma.join(ids.map((id) => Prisma.sql`${id}::uuid`))}) ORDER BY id FOR SHARE`
+        Prisma.sql`SELECT id,status,nickname AS "displayName" FROM woori.users WHERE id IN (${Prisma.join(ids.map((id) => Prisma.sql`${id}::uuid`))}) ORDER BY id FOR SHARE`
       );
       const blocker = users.find((user) => user.id === blockerId);
       const target = users.find((user) => user.id === blockedId);
@@ -81,6 +87,7 @@ export class BlocksRepository {
         return {
           userId: blockedId,
           displayName: target.displayName,
+          nickname: target.displayName,
           blockedAt: existing.createdAt,
         };
       if ((await tx.userBlock.count({ where: { blockerId } })) >= BLOCK_LIMIT)
@@ -96,6 +103,7 @@ export class BlocksRepository {
       return {
         userId: blockedId,
         displayName: target.displayName,
+        nickname: target.displayName,
         blockedAt: created.createdAt,
       };
     });
@@ -132,7 +140,7 @@ export class BlocksRepository {
           ? Prisma.sql`AND (b."createdAt",b."blockedId")<(SELECT "createdAt","blockedId" FROM woori.user_blocks WHERE "blockerId"=${blockerId}::uuid AND "blockedId"=${cursor}::uuid)`
           : Prisma.empty;
         const rows = await tx.$queryRaw<BlockRow[]>(
-          Prisma.sql`SELECT b."blockedId" AS "userId",u."displayName",b."createdAt" AS "blockedAt" FROM woori.user_blocks b JOIN woori.users u ON u.id=b."blockedId" WHERE b."blockerId"=${blockerId}::uuid ${after} ORDER BY b."createdAt" DESC,b."blockedId" DESC LIMIT ${limit + 1}`
+          Prisma.sql`SELECT b."blockedId" AS "userId",u.nickname AS "displayName",u.nickname,b."createdAt" AS "blockedAt" FROM woori.user_blocks b JOIN woori.users u ON u.id=b."blockedId" WHERE b."blockerId"=${blockerId}::uuid ${after} ORDER BY b."createdAt" DESC,b."blockedId" DESC LIMIT ${limit + 1}`
         );
         const more = rows.length > limit;
         if (more) rows.pop();

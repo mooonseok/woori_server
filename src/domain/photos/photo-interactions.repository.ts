@@ -18,7 +18,7 @@ const commentSelect = {
   x: true,
   y: true,
   createdAt: true,
-  author: { select: { id: true, displayName: true } },
+  author: { select: { id: true, nickname: true } },
 } satisfies Prisma.CommentSelect;
 type CommentRow = Prisma.CommentGetPayload<{ select: typeof commentSelect }>;
 function commentNotFound(): never {
@@ -35,6 +35,11 @@ export function commentSummary(
   const { authorId, ...result } = comment;
   return {
     ...result,
+    author: {
+      id: result.author.id,
+      nickname: result.author.nickname,
+      displayName: result.author.nickname,
+    },
     canEdit: authorId === userId,
     canDelete: authorId === userId || owner,
   };

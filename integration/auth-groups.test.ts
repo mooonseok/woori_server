@@ -80,13 +80,15 @@ test('real PostgreSQL: authentication, private groups and single-use invitation 
       const username = `${name}_${suffix}`;
       const email = `${username}@example.test`;
       const response = await mutation(agent.post('/v1/auth/signup'))
-        .send({ username, email, displayName: name, password })
+        .send({ username, email, displayName: name, nickname: name, password })
         .expect(201);
       assert.equal(response.body.user.emailVerified, false);
       assert.equal(response.body.verificationDelivery, 'sent');
       assert.equal(response.body.passwordHash, undefined);
       assert.equal(response.body.user.passwordHash, undefined);
       assert.equal(response.headers['cache-control'], 'no-store');
+      assert.equal(response.body.user.nickname, name);
+      assert.equal(response.body.user.nicknameNeedsUpdate, false);
       const cookies = response.headers['set-cookie'] as unknown as string[];
       const header = cookies.find((value) =>
         value.startsWith(`${sessionCookieName()}=`)
@@ -1161,6 +1163,7 @@ test('real PostgreSQL: authentication, private groups and single-use invitation 
             assert.deepEqual(general.author, {
               id: owner.id,
               displayName: 'owner',
+              nickname: 'owner',
             });
             assert.equal(general.canEdit, true);
             assert.equal(general.canDelete, true);

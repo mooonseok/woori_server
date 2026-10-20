@@ -244,6 +244,8 @@ test('isolated PostgreSQL: account deletion preserves shared content and erases 
         ).rows[0];
         assert.equal(user.status, 'DELETED');
         assert.equal(user.displayName, '탈퇴한 회원');
+        assert.equal(user.nickname, '탈퇴한 회원');
+        assert.equal(user.nicknameNeedsUpdate, false);
         assert.equal(user.passwordHash, '');
         assert.equal(user.verifiedAt, null);
         assert.notEqual(user.username, member.data.username);

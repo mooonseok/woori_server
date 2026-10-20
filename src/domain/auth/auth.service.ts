@@ -26,6 +26,8 @@ export function publicUser(user: User): SessionUser {
     id: user.id,
     username: user.username,
     displayName: user.displayName,
+    nickname: user.nickname,
+    nicknameNeedsUpdate: user.nicknameNeedsUpdate,
     email: user.email,
     emailVerified: Boolean(user.verifiedAt),
   };
@@ -53,6 +55,9 @@ export class AuthService {
           username: dto.username,
           email: dto.email,
           displayName: dto.displayName,
+          ...(dto.nickname !== undefined
+            ? { nickname: dto.nickname, nicknameNeedsUpdate: false }
+            : {}),
           passwordHash,
         },
         hashToken(token)
