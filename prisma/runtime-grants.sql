@@ -99,13 +99,18 @@ GRANT SELECT, INSERT ON woori.admin_sessions TO woori_api;
 REVOKE UPDATE ON woori.admin_sessions FROM woori_api;
 GRANT UPDATE ("tokenHash", "expiresAt", "idleExpiresAt", "mfaVerifiedAt",
   "reauthAt", "mfaFailedCount", "revokedAt") ON woori.admin_sessions TO woori_api;
+-- Profile photos: upload reservations are inserted, completed once and purged
+-- after their retention; cleanup jobs are leased like media_cleanup_jobs.
+-- users.avatarKey/avatarVersion are covered by the users UPDATE grant above.
+GRANT SELECT, INSERT, UPDATE, DELETE ON woori.avatar_uploads TO woori_api;
+GRANT SELECT, INSERT, UPDATE ON woori.storage_cleanup_jobs TO woori_api;
 -- The admin audit log is append-only for the runtime role.
 GRANT SELECT, INSERT ON woori.admin_audit_logs TO woori_api;
 REVOKE UPDATE, DELETE ON woori.admin_audit_logs FROM woori_api;
 DO $$
 DECLARE t text;
 BEGIN
-  FOREACH t IN ARRAY ARRAY['users','sessions','email_tokens','rate_limit_buckets','groups','memberships','invitations','albums','photos','photo_variants','media_cleanup_jobs','comments','reactions','notifications','notification_preferences','group_notification_preferences','notification_activities','push_installations','notification_deliveries','outbox_events','photo_memory_preferences','notices','inquiries','content_reports','user_blocks','admin_accounts','admin_sessions','admin_audit_logs','mail_outbox','worker_heartbeats'] LOOP
+  FOREACH t IN ARRAY ARRAY['users','sessions','email_tokens','rate_limit_buckets','groups','memberships','invitations','albums','photos','photo_variants','media_cleanup_jobs','comments','reactions','notifications','notification_preferences','group_notification_preferences','notification_activities','push_installations','notification_deliveries','outbox_events','photo_memory_preferences','notices','inquiries','content_reports','user_blocks','admin_accounts','admin_sessions','admin_audit_logs','mail_outbox','worker_heartbeats','avatar_uploads','storage_cleanup_jobs'] LOOP
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='woori' AND tablename=t AND policyname='server_api_access') THEN
       EXECUTE format('CREATE POLICY server_api_access ON woori.%I FOR ALL TO woori_api USING (true) WITH CHECK (true)', t);
     END IF;

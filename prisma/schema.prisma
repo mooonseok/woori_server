@@ -175,6 +175,10 @@ model User {
   passwordHash           String                        @db.VarChar(512)
   status                 UserStatus                    @default(ACTIVE)
   verifiedAt             DateTime?                     @db.Timestamptz(6)
+  // Profile photo: folder of the current renditions (avatars/{id}/{token}) and
+  // a version bumped on every replace/remove.
+  avatarKey              String?                       @db.VarChar(160)
+  avatarVersion          Int                           @default(0)
   createdAt              DateTime                      @default(now()) @db.Timestamptz(6)
   emailTokens            EmailToken[]
   createdInvitations     Invitation[]
@@ -620,6 +624,39 @@ model MediaCleanupJob {
 
   @@index([completedAt, availableAt, lockedUntil])
   @@map("media_cleanup_jobs")
+  @@schema("woori")
+}
+
+// A signed avatar upload (staging/{id}); completed once, then cleaned up.
+model AvatarUpload {
+  id          String    @id @db.Uuid
+  userId      String    @db.Uuid
+  contentType String    @db.VarChar(32)
+  bytes       Int
+  expiresAt   DateTime  @db.Timestamptz(6)
+  completedAt DateTime? @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([userId, createdAt], map: "avatar_uploads_user_idx")
+  @@map("avatar_uploads")
+  @@schema("woori")
+}
+
+// Durable deletion of a user's objects that belong to no photo (avatars).
+model StorageCleanupJob {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  objectKeys  String[]
+  availableAt DateTime  @db.Timestamptz(6)
+  attempts    Int       @default(0)
+  lockedUntil DateTime? @db.Timestamptz(6)
+  lockToken   String?   @db.Uuid
+  completedAt DateTime? @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
+
+  @@index([completedAt, availableAt, lockedUntil], map: "storage_cleanup_jobs_due_idx")
+  @@map("storage_cleanup_jobs")
   @@schema("woori")
 }
 

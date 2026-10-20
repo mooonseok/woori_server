@@ -5,6 +5,7 @@ import { NestFactory } from '@nestjs/core';
 import { WorkerModule } from './worker.module';
 import { startupFailure } from '../common/configurations/startup-diagnostics';
 import { MediaCleanupService } from './media-cleanup/media-cleanup.service';
+import { StorageCleanupService } from './storage-cleanup/storage-cleanup.service';
 import { GroupCleanupService } from './group-cleanup/group-cleanup.service';
 import { checkVideoTools, videoPreset } from '../common/media/video-transcode';
 import { assertProductionConfig } from '../common/configurations/production.config';
@@ -46,6 +47,7 @@ async function main() {
   // An invalid VIDEO_X264_PRESET is a deploy error, not a per-video failure.
   videoPreset(process.env);
   const cleanup = app.get(MediaCleanupService);
+  const storageCleanup = app.get(StorageCleanupService);
   const push = app.get(PushDispatchService);
   const groups = app.get(GroupCleanupService);
   const photos = app.get(PhotoProcessingService);
@@ -79,12 +81,19 @@ async function main() {
     );
   // Short DB/mail queues: never wait behind a photo/video transcode.
   const runQueues = async () => {
-    const jobs = ['media-cleanup', 'web-push', 'group-cleanup', 'mail-outbox'];
+    const jobs = [
+      'media-cleanup',
+      'web-push',
+      'group-cleanup',
+      'mail-outbox',
+      'storage-cleanup',
+    ];
     const results = await Promise.allSettled([
       cleanup.runBatch(),
       push.runBatch(),
       groups.runBatch(),
       mail.runBatch(),
+      storageCleanup.runBatch(),
     ]);
     for (const [index, result] of results.entries())
       if (result.status === 'fulfilled') report(jobs[index], result.value);

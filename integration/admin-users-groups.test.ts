@@ -681,6 +681,7 @@ test('isolated PostgreSQL: admin member and group management, suspension, deleti
             .expect(200);
           for (const item of res.body.members)
             assert.deepEqual(Object.keys(item).sort(), [
+              'avatarVersion',
               'blockedByMe',
               'displayName',
               'joinedAt',

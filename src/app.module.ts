@@ -4,6 +4,7 @@ import { ServiceSupportModule } from './domain/service-support/service-support.m
 import { ReportsModule } from './domain/reports/reports.module';
 import { BlocksModule } from './domain/blocks/blocks.module';
 import { AuthModule } from './domain/auth/auth.module';
+import { AvatarsModule } from './domain/avatars/avatars.module';
 import { InvitationsModule } from './domain/invitations/invitations.module';
 import { OriginGuard } from './common/guards/origin.guard';
 import { Module } from '@nestjs/common';
@@ -21,6 +22,7 @@ import { PrivateApiController } from './domain/private-api.controller';
   imports: [
     PushModule,
     AuthModule,
+    AvatarsModule,
     InvitationsModule,
     PrismaModule,
     HealthModule,

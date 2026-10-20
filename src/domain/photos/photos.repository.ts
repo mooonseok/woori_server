@@ -1,3 +1,8 @@
+import {
+  avatarColumns,
+  avatarVersionOf,
+  type AvatarColumns,
+} from '../../common/dto/member-avatar';
 import { effectivePhotoDate } from '../memories/memory-date';
 import { recordPhotoActivity } from '../notifications/notification-events';
 import {
@@ -34,8 +39,9 @@ const variantKind: Record<MediaVariant['kind'], string> = {
 // Every MediaPhoto response names its uploader (withdrawn accounts already
 // read '탈퇴한 회원').
 export const photoUploader = {
-  select: { id: true, nickname: true },
+  select: { id: true, nickname: true, ...avatarColumns },
 } satisfies Prisma.UserDefaultArgs;
+type PhotoUploaderRow = { id: string; nickname: string } & AvatarColumns;
 export const photoSummary = {
   id: true,
   groupId: true,
@@ -400,9 +406,7 @@ export class PhotosRepository {
     });
     return result.count;
   }
-  processingSummary(
-    photo: Photo & { uploader: { id: string; nickname: string } }
-  ) {
+  processingSummary(photo: Photo & { uploader: PhotoUploaderRow }) {
     const status =
       photo.status === 'READY'
         ? 'READY'
@@ -877,7 +881,7 @@ export class PhotosRepository {
       status: string;
       mediaKind: string;
       durationMs: number | null;
-      uploader: { id: string; nickname: string };
+      uploader: PhotoUploaderRow;
     },
     canDelete = true
   ) {
@@ -900,6 +904,7 @@ export class PhotosRepository {
         id: photo.uploader.id,
         displayName: photo.uploader.nickname,
         nickname: photo.uploader.nickname,
+        avatarVersion: avatarVersionOf(photo.uploader),
       },
     };
   }
