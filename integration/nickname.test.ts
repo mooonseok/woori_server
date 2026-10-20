@@ -141,6 +141,7 @@ test('isolated PostgreSQL: public nicknames never expose recovery names and rema
       id: owner.user.id,
       nickname: '새별명',
       displayName: '새별명',
+      avatarVersion: null,
     });
     const photos = (
       await peer.agent
@@ -153,6 +154,7 @@ test('isolated PostgreSQL: public nicknames never expose recovery names and rema
         id: owner.user.id,
         nickname: '새별명',
         displayName: '새별명',
+        avatarVersion: null,
       }
     );
     const notifications = (

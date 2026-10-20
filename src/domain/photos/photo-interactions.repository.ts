@@ -1,3 +1,4 @@
+import { avatarColumns, avatarVersionOf } from '../../common/dto/member-avatar';
 import { recordPhotoActivity } from '../notifications/notification-events';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -18,7 +19,7 @@ const commentSelect = {
   x: true,
   y: true,
   createdAt: true,
-  author: { select: { id: true, nickname: true } },
+  author: { select: { id: true, nickname: true, ...avatarColumns } },
 } satisfies Prisma.CommentSelect;
 type CommentRow = Prisma.CommentGetPayload<{ select: typeof commentSelect }>;
 function commentNotFound(): never {
@@ -39,6 +40,7 @@ export function commentSummary(
       id: result.author.id,
       nickname: result.author.nickname,
       displayName: result.author.nickname,
+      avatarVersion: avatarVersionOf(result.author),
     },
     canEdit: authorId === userId,
     canDelete: authorId === userId || owner,

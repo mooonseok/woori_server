@@ -51,6 +51,17 @@ import {
 export const MAX_UPLOAD_BYTES = 30 * 1024 * 1024;
 export const MAX_TOTAL_VARIANT_BYTES = 90 * 1024 * 1024;
 export const MAX_IMAGE_PIXELS = 60_000_000;
+// Profile photos: a smaller upload and decode budget; square WebP renditions.
+export const AVATAR_MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+export const AVATAR_MAX_PIXELS = 40_000_000;
+export const AVATAR_SIZES = [512, 128] as const;
+export type AvatarSize = (typeof AVATAR_SIZES)[number];
+const AVATAR_MAX_RENDITION_BYTES = 1024 * 1024;
+const UUID_PATTERN =
+  '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+/** Object key of one avatar rendition inside its folder. */
+export const avatarObjectKey = (folder: string, size: AvatarSize) =>
+  `${folder}/${size}.webp`;
 // Bound retained native cache and per-image threads; this is not an RSS limit.
 // Each process has its own cache and processing slots. Deployment memory
 // budgets must account for both API and worker processes.
@@ -156,7 +167,7 @@ export class MediaStorageService implements OnModuleDestroy {
   }
   private validKey(key: string, prefix?: string): void {
     if (
-      !/^(staging|photos)\/[a-zA-Z0-9/_-]+(?:\.(?:jpg|png|webp|mp4))?$/.test(
+      !/^(staging|photos|avatars)\/[a-zA-Z0-9/_-]+(?:\.(?:jpg|png|webp|mp4))?$/.test(
         key
       ) ||
       key.includes('//') ||
@@ -255,8 +266,13 @@ export class MediaStorageService implements OnModuleDestroy {
       body?.destroy();
     }
   }
-  protected async put(key: string, data: Buffer, mime: string): Promise<void> {
-    this.validKey(key, 'photos/');
+  protected async put(
+    key: string,
+    data: Buffer,
+    mime: string,
+    prefix: 'photos/' | 'avatars/' = 'photos/'
+  ): Promise<void> {
+    this.validKey(key, prefix);
     try {
       await this.sdk().send(
         new PutObjectCommand({
@@ -421,6 +437,116 @@ export class MediaStorageService implements OnModuleDestroy {
     } finally {
       this.processing--;
     }
+  }
+  /**
+   * Square profile photo renditions from a staging upload: the decoded image is
+   * oriented, centre-cropped and written as 512/128 WebP without metadata.
+   * Returns the written keys; nothing is left behind on failure.
+   */
+  async processAvatar(
+    stagingKey: string,
+    expectedMime: string,
+    expectedBytes: number,
+    folder: string
+  ): Promise<string[]> {
+    this.validKey(stagingKey, 'staging/');
+    this.validKey(folder, 'avatars/');
+    if (
+      !Object.values(mimeByFormat).includes(expectedMime) ||
+      !Number.isSafeInteger(expectedBytes) ||
+      expectedBytes < 1 ||
+      expectedBytes > AVATAR_MAX_UPLOAD_BYTES
+    )
+      throw uploadInvalid();
+    if (this.processing >= 2)
+      throw new ServiceUnavailableException({ code: 'MEDIA_PROCESSING_BUSY' });
+    this.processing++;
+    const attempted: string[] = [];
+    try {
+      const { data, contentType } = await this.download(
+        stagingKey,
+        expectedBytes
+      );
+      if (
+        data.length !== expectedBytes ||
+        contentType.split(';')[0].trim() !== expectedMime
+      )
+        throw uploadInvalid();
+      const renditions: { size: AvatarSize; data: Buffer }[] = [];
+      try {
+        const image = sharp(data, {
+          limitInputPixels: AVATAR_MAX_PIXELS,
+          failOn: 'warning',
+        });
+        const meta = await image.metadata();
+        if (
+          !meta.format ||
+          mimeByFormat[meta.format] !== expectedMime ||
+          !meta.width ||
+          !meta.height ||
+          (meta.pages ?? 1) !== 1 ||
+          meta.width * meta.height > AVATAR_MAX_PIXELS
+        )
+          throw uploadInvalid();
+        for (const size of AVATAR_SIZES)
+          renditions.push({
+            size,
+            data: await image
+              .clone()
+              .autoOrient()
+              .resize({
+                width: size,
+                height: size,
+                fit: 'cover',
+                position: 'centre',
+              })
+              .webp({ quality: 82 })
+              .timeout({ seconds: 15 })
+              .toBuffer(),
+          });
+      } catch {
+        throw uploadInvalid();
+      }
+      if (renditions.some((r) => r.data.length > AVATAR_MAX_RENDITION_BYTES))
+        throw uploadInvalid();
+      for (const rendition of renditions) {
+        const key = avatarObjectKey(folder, rendition.size);
+        attempted.push(key);
+        await this.put(key, rendition.data, 'image/webp', 'avatars/');
+      }
+      return attempted;
+    } catch (error) {
+      await this.cleanup(attempted);
+      throw error;
+    } finally {
+      this.processing--;
+    }
+  }
+  async readAvatar(objectKey: string) {
+    this.validKey(objectKey, 'avatars/');
+    const { data, contentType } = await this.download(
+      objectKey,
+      AVATAR_MAX_RENDITION_BYTES
+    );
+    return { data, contentType };
+  }
+  /**
+   * Durable deletion of one user's avatar renditions and avatar staging
+   * uploads. Only exact keys of that user are accepted (never a prefix: the
+   * current avatar shares the user's folder).
+   */
+  async removeAvatarObjects(userId: string, objectKeys: string[]) {
+    if (!new RegExp(`^${UUID_PATTERN}$`).test(userId)) throw uploadInvalid();
+    const allowed = new RegExp(
+      `^(?:staging/${UUID_PATTERN}|avatars/${userId}/${UUID_PATTERN}/(?:512|128)\\.webp)$`
+    );
+    if (
+      !objectKeys.length ||
+      objectKeys.length > 10 ||
+      !objectKeys.every((key) => allowed.test(key))
+    )
+      throw uploadInvalid();
+    for (const key of new Set(objectKeys)) await this.removeAndConfirm(key);
   }
   /** Streams a private object to a local file, bounded by the declared size. */
   protected async downloadToFile(

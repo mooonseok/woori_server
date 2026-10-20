@@ -568,9 +568,11 @@ test('daily R2 backup: deleted sources skip, failures name only the SDK error, s
     error: 'Error',
     httpStatus: null,
   });
-  // The marker and manifest live outside the listed photo prefix.
+  // The marker and manifest live outside the listed media prefixes; profile
+  // photos are backed up with photos, never staging uploads.
   for (const key of [BACKUP_LAST_SUCCESS_KEY, BACKUP_MANIFEST_KEY])
     assert.ok(!BACKUP_PREFIXES.some((prefix) => key.startsWith(prefix)));
+  assert.deepEqual([...BACKUP_PREFIXES], ['photos/', 'avatars/']);
   assert.deepEqual(
     lastSuccessRecord({
       sourceBucket: 'woori-media',

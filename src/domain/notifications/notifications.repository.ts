@@ -1,3 +1,4 @@
+import { avatarVersionOf } from '../../common/dto/member-avatar';
 import {
   BadRequestException,
   ConflictException,
@@ -54,14 +55,14 @@ export function validateQuietPreferences(p: {
 // visible activity gives latestSequence, latestAt, actor and photo. A bundle with
 // no visible activity left is not returned at all (no stale counts).
 export function visible(userId: string) {
-  return Prisma.sql`SELECT n.id,n.kind,n."groupId",g.name AS "groupName",latest."albumId",latest."albumTitle",latest."photoId",latest."uploaderId",latest."commentId",n."createdAt",n."readThroughSequence",n."lastSequence",latest.sequence AS "latestSequence",latest."createdAt" AS "latestAt",latest.count::int AS count,latest."videoCount"::int AS "videoCount",latest."mediaKind",latest."actorId",latest."actorName"
+  return Prisma.sql`SELECT n.id,n.kind,n."groupId",g.name AS "groupName",latest."albumId",latest."albumTitle",latest."photoId",latest."uploaderId",latest."commentId",n."createdAt",n."readThroughSequence",n."lastSequence",latest.sequence AS "latestSequence",latest."createdAt" AS "latestAt",latest.count::int AS count,latest."videoCount"::int AS "videoCount",latest."mediaKind",latest."actorId",latest."actorName",latest."actorAvatarKey",latest."actorAvatarVersion"
     FROM woori.notifications n
     JOIN woori.groups g ON g.id=n."groupId" AND g.status='ACTIVE'
     JOIN woori.memberships m ON m."groupId"=g.id AND m."userId"=${userId}::uuid AND m.status='ACTIVE'
     JOIN woori.users recipient ON recipient.id=m."userId" AND recipient.status='ACTIVE'
     JOIN LATERAL (
       SELECT va.*,COUNT(*) OVER () AS count,COUNT(*) FILTER (WHERE va."mediaKind"='VIDEO') OVER () AS "videoCount" FROM (
-        SELECT act.sequence,act."createdAt",u.id AS "actorId",u.nickname AS "actorName",p.id AS "photoId",p."uploaderId",p."mediaKind"::text AS "mediaKind",a.id AS "albumId",a.title AS "albumTitle",c.id AS "commentId"
+        SELECT act.sequence,act."createdAt",u.id AS "actorId",u.nickname AS "actorName",u."avatarKey" AS "actorAvatarKey",u."avatarVersion" AS "actorAvatarVersion",p.id AS "photoId",p."uploaderId",p."mediaKind"::text AS "mediaKind",a.id AS "albumId",a.title AS "albumTitle",c.id AS "commentId"
         FROM woori.notification_activities act
         JOIN woori.users u ON u.id=act."actorId" AND u.status IN ('ACTIVE','SUSPENDED')
         LEFT JOIN woori.comments c ON n.kind IN ('COMMENT','PIN') AND c.id=n."targetId" AND c."groupId"=g.id AND c."deletedAt" IS NULL
@@ -98,19 +99,31 @@ export type InboxRow = {
   mediaKind: string;
   actorId: string;
   actorName: string;
+  actorAvatarKey: string | null;
+  actorAvatarVersion: number;
 };
 // Inbox item: the bundle's latest visible actor/photo plus its visible count.
 // Internal columns (uploaderId, lastSequence) stay server-side.
 export function inboxItem({
   actorId,
   actorName,
+  actorAvatarKey,
+  actorAvatarVersion,
   uploaderId: _uploader,
   lastSequence: _last,
   ...row
 }: InboxRow) {
   return {
     ...row,
-    actor: { id: actorId, displayName: actorName, nickname: actorName },
+    actor: {
+      id: actorId,
+      displayName: actorName,
+      nickname: actorName,
+      avatarVersion: avatarVersionOf({
+        avatarKey: actorAvatarKey,
+        avatarVersion: actorAvatarVersion,
+      }),
+    },
     navigation: navigationFor(row.kind),
     unread: isUnread(row.readThroughSequence, row.latestSequence),
   };
@@ -168,9 +181,13 @@ export class NotificationsRepository {
   }
   async target(userId: string, id: string) {
     const rows = await this.prisma.client.$queryRaw<
-      (InboxRow & { uploaderName: string })[]
+      (InboxRow & {
+        uploaderName: string;
+        uploaderAvatarKey: string | null;
+        uploaderAvatarVersion: number;
+      })[]
     >(
-      Prisma.sql`WITH visible AS (${visible(userId)}) SELECT v.*,pu.nickname AS "uploaderName" FROM visible v JOIN woori.users pu ON pu.id=v."uploaderId" WHERE v.id=${id}::uuid`
+      Prisma.sql`WITH visible AS (${visible(userId)}) SELECT v.*,pu.nickname AS "uploaderName",pu."avatarKey" AS "uploaderAvatarKey",pu."avatarVersion" AS "uploaderAvatarVersion" FROM visible v JOIN woori.users pu ON pu.id=v."uploaderId" WHERE v.id=${id}::uuid`
     );
     if (!rows.length) notificationNotFound();
     const {
@@ -189,6 +206,10 @@ export class NotificationsRepository {
       id: rows[0].uploaderId,
       displayName: rows[0].uploaderName,
       nickname: rows[0].uploaderName,
+      avatarVersion: avatarVersionOf({
+        avatarKey: rows[0].uploaderAvatarKey,
+        avatarVersion: rows[0].uploaderAvatarVersion,
+      }),
     };
     return {
       groupId,

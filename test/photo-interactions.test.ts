@@ -99,10 +99,32 @@ test('comment capabilities permit owner moderation but never editing another aut
     x: null,
     y: null,
     createdAt: new Date(),
-    author: { id: 'author', nickname: '가족' },
+    author: {
+      id: 'author',
+      nickname: '가족',
+      avatarKey: null as string | null,
+      avatarVersion: 0,
+    },
   };
   const author = commentSummary(comment, 'author', false);
   assert.equal(author.canEdit, true);
+  // The storage folder never leaves the server; only the URL version does.
+  assert.equal(author.author.avatarVersion, null);
+  assert.equal('avatarKey' in author.author, false);
+  const pictured = commentSummary(
+    {
+      ...comment,
+      author: {
+        ...comment.author,
+        avatarKey: 'avatars/a/b',
+        avatarVersion: 3,
+      },
+    },
+    'member',
+    false
+  );
+  assert.equal(pictured.author.avatarVersion, 3);
+  assert.equal('avatarKey' in pictured.author, false);
   assert.equal(author.canDelete, true);
   const owner = commentSummary(comment, 'owner', true);
   assert.equal(owner.canEdit, false);

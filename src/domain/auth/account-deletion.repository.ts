@@ -10,6 +10,7 @@ import { markPhotosDeleted } from '../photos/photo-deletion';
 import { eraseInquiriesOnAccountDeletion } from '../service-support/inquiry-retention';
 import { anonymizeReportsOnAccountDeletion } from '../reports/report-retention';
 import { eraseBlocksOnAccountDeletion } from '../blocks/block-retention';
+import { eraseAvatarOnAccountDeletion } from '../avatars/avatars.repository';
 
 class MembershipChanged extends Error {}
 export type AccountOwnership = {
@@ -156,6 +157,8 @@ export class AccountDeletionRepository {
             await anonymizeReportsOnAccountDeletion(tx, userId);
             // Own blocks are personal settings; blocks on this user are kept.
             await eraseBlocksOnAccountDeletion(tx, userId);
+            // The profile photo is personal: its objects are scheduled for removal.
+            await eraseAvatarOnAccountDeletion(tx, userId);
             const tombstone = randomUUID();
             await tx.user.update({
               where: { id: userId },

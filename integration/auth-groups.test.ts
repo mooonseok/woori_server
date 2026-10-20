@@ -1164,6 +1164,7 @@ test('real PostgreSQL: authentication, private groups and single-use invitation 
               id: owner.id,
               displayName: 'owner',
               nickname: 'owner',
+              avatarVersion: null,
             });
             assert.equal(general.canEdit, true);
             assert.equal(general.canDelete, true);

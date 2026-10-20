@@ -1,3 +1,4 @@
+import { avatarColumns, avatarVersionOf } from '../../common/dto/member-avatar';
 import {
   ConflictException,
   ForbiddenException,
@@ -94,6 +95,7 @@ export class GroupManagementRepository {
           user: {
             select: {
               nickname: true,
+              ...avatarColumns,
               // Only this viewer's own block; roster membership is unchanged.
               blockedBy: {
                 where: { blockerId: userId },
@@ -110,6 +112,8 @@ export class GroupManagementRepository {
           ...row,
           displayName: user.nickname,
           nickname: user.nickname,
+          // A blocked member's photo stays hidden from this viewer.
+          avatarVersion: user.blockedBy.length ? null : avatarVersionOf(user),
           blockedByMe: user.blockedBy.length > 0,
         })),
         nextCursor: more ? rows.at(-1)!.userId : null,

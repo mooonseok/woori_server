@@ -479,6 +479,7 @@ test('isolated PostgreSQL: W07 upload/reaction notification bundles', async (t) 
           id: mom.id,
           displayName: mom.name,
           nickname: mom.name,
+          avatarVersion: null,
         });
         assert.equal(entry.latestSequence, 5);
         assert.equal(entry.readThroughSequence, 0);
@@ -501,7 +502,12 @@ test('isolated PostgreSQL: W07 upload/reaction notification bundles', async (t) 
           latestSequence: 5,
           mediaKind: 'PHOTO',
           navigation: 'ALBUM',
-          uploader: { id: mom.id, displayName: mom.name, nickname: mom.name },
+          uploader: {
+            id: mom.id,
+            displayName: mom.name,
+            nickname: mom.name,
+            avatarVersion: null,
+          },
         });
         // Not due yet: nothing is fanned out or sent before the delay.
         await dispatch();
@@ -831,6 +837,7 @@ test('isolated PostgreSQL: W07 upload/reaction notification bundles', async (t) 
           id: aunt.id,
           displayName: aunt.name,
           nickname: aunt.name,
+          avatarVersion: null,
         });
         assert.equal(
           (

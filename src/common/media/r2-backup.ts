@@ -16,7 +16,9 @@ export interface BackupManifest {
   // Backup key -> ISO time a run first found it missing from the source.
   orphans: Record<string, string>;
 }
-export const BACKUP_PREFIXES = ['photos/'] as const;
+// Photos and profile photos (avatars/). Removed avatars leave the source and
+// are pruned from the backup like deleted photos.
+export const BACKUP_PREFIXES = ['photos/', 'avatars/'] as const;
 // Outside BACKUP_PREFIXES, so never listed, copied or pruned as a photo.
 export const BACKUP_MANIFEST_KEY = '_woori-backup/manifest.json';
 export const MAX_BACKUP_MANIFEST_BYTES = 32 * 1024 * 1024;

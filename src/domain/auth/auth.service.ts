@@ -21,6 +21,7 @@ import {
   setSessionCookie,
 } from './auth-token';
 import { hashPassword, verifyPassword } from './password';
+import { avatarVersionOf } from '../../common/dto/member-avatar';
 export function publicUser(user: User): SessionUser {
   return {
     id: user.id,
@@ -30,6 +31,7 @@ export function publicUser(user: User): SessionUser {
     nicknameNeedsUpdate: user.nicknameNeedsUpdate,
     email: user.email,
     emailVerified: Boolean(user.verifiedAt),
+    avatarVersion: avatarVersionOf(user),
   };
 }
 @Injectable()
