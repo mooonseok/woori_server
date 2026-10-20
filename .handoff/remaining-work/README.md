@@ -12,6 +12,8 @@
 
 2026-10-19 사용자 보고: Lightsail 서울 API·워커에서 Docker가 실행 중이며 API HTTPS healthz/readyz는 200, 워커는 polling 및 lastPassOk/videoReady true를 확인했다. 운영 R2 버킷·토큰·CORS 설정과 Cloudflare Pages `woori-web` 배포를 마쳤고 `woori.stream` 로그인 화면을 확인했다. 이번 문서 갱신에서 원격 상태를 직접 재검증하지는 않았다. 실제 가입·메일·미디어·푸시의 운영 수용, 실기기 검증, 일일 백업 스케줄·실패 알림·복원 훈련은 미확인이다. 관리자 웹 배포도 확인되지 않았다. 새 커밋·push·배포는 각 사용자 요청 범위에서만 진행한다.
 
+2026-10-20 운영 대조와 릴리스 준비(`feature/release-readiness`, 미커밋): develop은 server `9ff1a10`(PR #19 닉네임 API), client `1d959df`(PR #21 닉네임·안내 문구, PR #19·#20 v4.1·공개 홈)이다. 외부 읽기 전용 확인 결과 운영 DB는 21개 중 19개 migration 적용(닉네임 2개 미적용), API는 Caddy 뒤에서 healthz/readyz 200, 마지막 기록 이미지 `20261019-1`은 `c940d04` 소스, `woori.stream`은 v4.1 이전 빌드, `admin.woori.stream`은 DNS 없음이다. 실행 버전 식별(`/healthz` release, 워커 시작 로그, Pages `/release.json`), 커밋 기준 릴리스 이미지 스크립트, R2 백업 보완과 Lightsail 일일 실행 템플릿을 준비했다. 운영 DB·서버·웹은 바꾸지 않았다. 운영 반영은 migration → API·워커 → 회원 웹 순서로 사용자 승인 후 진행한다. 상세는 SETUP.md "현재 운영 기준"·"릴리스 이미지"·"백업과 복원 훈련"을 따른다.
+
 ## 다른 컴퓨터에서 재개
 
 1. 두 저장소를 나란히 두고 미커밋 변경·브랜치부터 확인한다. reset·강제 checkout하지 않는다.

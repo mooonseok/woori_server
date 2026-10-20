@@ -8,6 +8,7 @@ import { MediaCleanupService } from './media-cleanup/media-cleanup.service';
 import { GroupCleanupService } from './group-cleanup/group-cleanup.service';
 import { checkVideoTools, videoPreset } from '../common/media/video-transcode';
 import { assertProductionConfig } from '../common/configurations/production.config';
+import { releaseRevision } from '../common/configurations/release';
 import { MailOutboxService } from '../domain/mail/mail-outbox';
 import {
   WorkerHeartbeatRepository,
@@ -27,6 +28,7 @@ async function main() {
       JSON.stringify({
         service: 'woori-worker',
         status: 'bootstrap',
+        release: releaseRevision(),
         jobsReady: true,
         videoReady: video.ready,
         ffmpeg: video.ffmpeg,
@@ -185,6 +187,7 @@ async function main() {
     JSON.stringify({
       service: 'woori-worker',
       status: 'polling',
+      release: releaseRevision(),
       jobsReady: true,
       videoReady,
     })

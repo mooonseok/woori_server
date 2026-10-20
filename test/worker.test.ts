@@ -9,7 +9,7 @@ test('cleanup worker exits cleanly on SIGTERM even when DB is unavailable', asyn
     [path.resolve(__dirname, '../src/worker/main.js')],
     {
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, DATABASE_URL: '' },
+      env: { ...process.env, DATABASE_URL: '', WOORI_RELEASE: 'b'.repeat(40) },
     }
   );
   const timeout = setTimeout(() => worker.kill('SIGKILL'), 5000);
@@ -29,7 +29,10 @@ test('cleanup worker exits cleanly on SIGTERM even when DB is unavailable', asyn
     const result = await exit;
     assert.equal(result.code, 0);
     assert.equal(result.signal, null);
-    assert.equal(JSON.parse(output.trim()).jobsReady, true);
+    const started = JSON.parse(output.trim());
+    assert.equal(started.jobsReady, true);
+    // The start line names the release so `docker logs` identifies the image.
+    assert.equal(started.release, 'b'.repeat(40));
   } finally {
     clearTimeout(timeout);
     if (worker.exitCode === null && worker.signalCode === null)

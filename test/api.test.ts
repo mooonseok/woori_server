@@ -19,14 +19,31 @@ test('health contract, private routes, fabricated credentials and CORS', async (
   try {
     await app.listen(0, '127.0.0.1');
     const api = request(app.getHttpServer());
+    const oldRelease = process.env.WOORI_RELEASE;
+    delete process.env.WOORI_RELEASE;
     const health = await api.get('/healthz').expect(200);
     assert.deepEqual(health.body, {
       service: 'woori-api',
       status: 'alive',
       implementation: 'auth-groups-media',
       featuresReady: false,
+      release: null,
     });
     assert.equal(health.headers['cache-control'], 'no-store');
+    // Only a full lowercase git SHA is echoed; other text reads as unknown.
+    const sha = 'a'.repeat(40);
+    for (const [value, expected] of [
+      [sha, sha],
+      ['A'.repeat(40), null],
+      ['abc1234', null],
+      [`${sha}\n<script>`, null],
+    ] as const) {
+      process.env.WOORI_RELEASE = value;
+      const tagged = await api.get('/healthz').expect(200);
+      assert.equal(tagged.body.release, expected);
+    }
+    if (oldRelease === undefined) delete process.env.WOORI_RELEASE;
+    else process.env.WOORI_RELEASE = oldRelease;
     const ready = await api.get('/readyz').expect(503);
     assert.deepEqual(ready.body, {
       status: 'not_ready',

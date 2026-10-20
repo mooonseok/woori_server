@@ -8,6 +8,19 @@ import { MediaStorageService } from '../../common/media/media-storage.service';
 import { Public } from '../../common/decorators/public.decorator';
 import { PrismaService } from '../../common/modules/prisma/prisma.service';
 import { mailConfigured } from '../../common/mail/mail-config';
+import { releaseRevision } from '../../common/configurations/release';
+import { webPushConfig } from '../../common/push/web-push.config';
+
+// Startup already rejects a partial or invalid push configuration; this only
+// reports whether the keys are loaded, never whether a delivery succeeds.
+function pushConfigured() {
+  try {
+    return webPushConfig() !== null;
+  } catch {
+    return false;
+  }
+}
+
 @Controller()
 export class HealthController {
   constructor(
@@ -23,6 +36,7 @@ export class HealthController {
       status: 'alive',
       implementation: 'auth-groups-media',
       featuresReady: false,
+      release: releaseRevision(),
     };
   }
   @Public()
@@ -41,7 +55,7 @@ export class HealthController {
           groups: true,
           invitations: true,
           media: this.media.enabled(),
-          push: false,
+          push: pushConfigured(),
         },
       };
     } catch {

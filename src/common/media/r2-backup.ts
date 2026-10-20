@@ -149,3 +149,65 @@ export function planR2Backup(
     } satisfies BackupManifest,
   };
 }
+
+// Written only after a run with no copy/prune failure, outside BACKUP_PREFIXES
+// like the manifest. A read-only check of the backup bucket (or the restore
+// drill) can tell when the last complete backup finished.
+export const BACKUP_LAST_SUCCESS_KEY = '_woori-backup/last-success.json';
+
+export function lastSuccessRecord(input: {
+  sourceBucket: string;
+  startedAt: Date;
+  finishedAt: Date;
+  sourceObjects: number;
+  copied: number;
+  unchanged: number;
+  sourceGone: number;
+}) {
+  return {
+    version: 1 as const,
+    sourceBucket: input.sourceBucket,
+    startedAt: input.startedAt.toISOString(),
+    finishedAt: input.finishedAt.toISOString(),
+    sourceObjects: input.sourceObjects,
+    copied: input.copied,
+    unchanged: input.unchanged,
+    sourceGone: input.sourceGone,
+  };
+}
+
+// Orphans only grow while pruning stays manual; a manifest over the read limit
+// would stop every later run, so it is never written past the limit and the
+// summary warns well before that.
+export function manifestSizeStatus(
+  bytes: number
+): 'ok' | 'near-limit' | 'too-large' {
+  if (bytes > MAX_BACKUP_MANIFEST_BYTES) return 'too-large';
+  return bytes > MAX_BACKUP_MANIFEST_BYTES * 0.8 ? 'near-limit' : 'ok';
+}
+
+// A source object deleted between listing and copy (photo deletion, media
+// cleanup) is normal, not a failed backup. Only the object-level NoSuchKey
+// counts; a missing bucket (NoSuchBucket, also 404) stays a failure.
+export const sourceGone = (error: unknown) =>
+  (error as { name?: unknown } | null)?.name === 'NoSuchKey';
+
+// Provider errors may carry request details, so only the SDK error name and
+// HTTP status are reported (e.g. AccessDenied 403, NoSuchBucket 404).
+export function backupFailureSummary(error: unknown) {
+  const value = error as {
+    name?: unknown;
+    $metadata?: { httpStatusCode?: unknown };
+  } | null;
+  const name =
+    typeof value?.name === 'string' &&
+    /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(value.name)
+      ? value.name
+      : 'Error';
+  const status = value?.$metadata?.httpStatusCode;
+  return {
+    status: 'failed' as const,
+    error: name,
+    httpStatus: Number.isInteger(status) ? (status as number) : null,
+  };
+}

@@ -7,8 +7,13 @@
 // source listing, the same bucket on both sides or a manifest written for a
 // different source abort the run; a prune above 5% of the backup is skipped
 // (copy still runs, exit 1) unless `--force-large-prune` is added after
-// checking. Prints counts only: never keys, URLs or credentials. Run
-// `pnpm build` first.
+// checking. A source object deleted between listing and copy is counted as
+// sourceGone, not as a failure. After a run with no failure it writes
+// _woori-backup/last-success.json (times and counts only). Prints counts only:
+// never keys, URLs or credentials; a provider failure prints its SDK error
+// name and HTTP status. Exit codes: 0 ok, 1 failed/aborted/partial, 2 usage,
+// 3 ok but the manifest is near its size limit.
+// Run `pnpm build` first.
 //   pnpm r2:backup                       # plan
 //   pnpm r2:backup --apply               # copy (+ record orphans)
 //   pnpm r2:backup --apply --prune-older-than 90 [--force-large-prune]
@@ -28,7 +33,12 @@ const {
   BackupSafetyError,
   BACKUP_PREFIXES,
   BACKUP_MANIFEST_KEY,
+  BACKUP_LAST_SUCCESS_KEY,
   MAX_BACKUP_MANIFEST_BYTES,
+  backupFailureSummary,
+  lastSuccessRecord,
+  manifestSizeStatus,
+  sourceGone,
 } = require('../dist/src/common/media/r2-backup.js');
 
 const args = process.argv.slice(2);
@@ -42,7 +52,9 @@ if (
   args.some(
     (arg, index) =>
       !known.has(arg) && !(pruneIndex !== -1 && index === pruneIndex + 1)
-  )
+  ) ||
+  (pruneIndex !== -1 &&
+    (!Number.isInteger(pruneOlderThanDays) || pruneOlderThanDays < 7))
 ) {
   console.error(
     'Usage: r2-backup [--apply] [--prune-older-than <days>=7+] [--force-large-prune]'
@@ -134,9 +146,11 @@ async function inBatches(items, size, run) {
   }
   return failed;
 }
+const startedAt = new Date();
 try {
   const manifest = await readManifest();
-  const plan = planR2Backup(await list(source), await list(target), {
+  const sourceObjects = await list(source);
+  const plan = planR2Backup(sourceObjects, await list(target), {
     sourceBucket: source,
     backupBucket: target,
     manifest,
@@ -158,20 +172,27 @@ try {
     console.log(JSON.stringify(summary));
     process.exit(plan.pruneBlocked ? 1 : 0);
   }
-  const copyFailed = await inBatches(plan.copy, 4, (object) =>
-    client.send(
-      new CopyObjectCommand({
-        Bucket: target,
-        Key: object.key,
-        CopySource: `${source}/${object.key
-          .split('/')
-          .map(encodeURIComponent)
-          .join('/')}`,
-        MetadataDirective: 'COPY',
-      }),
-      { abortSignal: AbortSignal.timeout(120_000) }
-    )
-  );
+  let gone = 0;
+  const copyFailed = await inBatches(plan.copy, 4, async (object) => {
+    try {
+      await client.send(
+        new CopyObjectCommand({
+          Bucket: target,
+          Key: object.key,
+          CopySource: `${source}/${object.key
+            .split('/')
+            .map(encodeURIComponent)
+            .join('/')}`,
+          MetadataDirective: 'COPY',
+        }),
+        { abortSignal: AbortSignal.timeout(120_000) }
+      );
+    } catch (error) {
+      // Deleted after listing (normal photo deletion or media cleanup).
+      if (sourceGone(error)) gone++;
+      else throw error;
+    }
+  });
   // A delete that failed keeps its first-seen time for the next run.
   const pruneFailed = await inBatches(plan.prune, 4, async (key) => {
     await client.send(new DeleteObjectCommand({ Bucket: target, Key: key }), {
@@ -179,34 +200,72 @@ try {
     });
     delete plan.manifest.orphans[key];
   });
-  await client.send(
-    new PutObjectCommand({
-      Bucket: target,
-      Key: BACKUP_MANIFEST_KEY,
-      Body: JSON.stringify(plan.manifest),
-      ContentType: 'application/json',
-    }),
-    { abortSignal: AbortSignal.timeout(30_000) }
-  );
+  const manifestBody = JSON.stringify(plan.manifest);
+  const manifestSize = manifestSizeStatus(Buffer.byteLength(manifestBody));
+  // Over the read limit the old manifest stays; prune decisions only wait.
+  if (manifestSize !== 'too-large')
+    await client.send(
+      new PutObjectCommand({
+        Bucket: target,
+        Key: BACKUP_MANIFEST_KEY,
+        Body: manifestBody,
+        ContentType: 'application/json',
+      }),
+      { abortSignal: AbortSignal.timeout(30_000) }
+    );
+  const copied = plan.copy.length - copyFailed - gone;
+  const complete =
+    !copyFailed &&
+    !pruneFailed &&
+    !plan.pruneBlocked &&
+    manifestSize !== 'too-large';
+  const finishedAt = new Date();
+  if (complete)
+    await client.send(
+      new PutObjectCommand({
+        Bucket: target,
+        Key: BACKUP_LAST_SUCCESS_KEY,
+        Body: JSON.stringify(
+          lastSuccessRecord({
+            sourceBucket: source,
+            startedAt,
+            finishedAt,
+            sourceObjects: sourceObjects.length,
+            copied,
+            unchanged: plan.unchanged,
+            sourceGone: gone,
+          })
+        ),
+        ContentType: 'application/json',
+      }),
+      { abortSignal: AbortSignal.timeout(30_000) }
+    );
   console.log(
     JSON.stringify({
       ...summary,
-      copied: plan.copy.length - copyFailed,
+      status: complete ? 'ok' : 'partial',
+      copied,
       copyFailed,
+      sourceGone: gone,
       pruned: plan.prune.length - pruneFailed,
       pruneFailed,
+      manifestSize,
+      startedAt: startedAt.toISOString(),
+      finishedAt: finishedAt.toISOString(),
     })
   );
-  if (copyFailed || pruneFailed || plan.pruneBlocked) process.exitCode = 1;
+  // 3: complete, but orphans need a retention decision before the manifest
+  // reaches its read limit (monitors treat any non-zero exit as an alert).
+  if (!complete) process.exitCode = 1;
+  else if (manifestSize === 'near-limit') process.exitCode = 3;
 } catch (error) {
   if (error instanceof BackupSafetyError) {
     // Fixed codes only (SOURCE_EMPTY, SAME_BUCKET, MANIFEST_*): nothing changed.
     console.error(JSON.stringify({ status: 'aborted', reason: error.code }));
   } else
-    // Provider errors can include request details; only a generic line is shown.
-    console.error(
-      'R2 backup failed (provider or network error; details withheld).'
-    );
+    // Provider errors can include request details: only the SDK error name
+    // and HTTP status are shown (e.g. AccessDenied 403, NoSuchBucket 404).
+    console.error(JSON.stringify(backupFailureSummary(error)));
   process.exitCode = 1;
 } finally {
   client.destroy();
