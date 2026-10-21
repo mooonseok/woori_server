@@ -250,7 +250,10 @@ try {
   created = out;
   const context = join(out, 'build-context');
   const verification = join(out, 'verification');
-  mkdirSync(verification, { mode: 0o700 });
+  // The bind mount is read by uid 1000, which can differ from the CI runner.
+  // Only public verification inputs are accessible; the release root stays 0700.
+  mkdirSync(verification, { mode: 0o755 });
+  chmodSync(verification, 0o755);
 
   say(
     `${options.source === 'commit' ? `커밋 ${sha}` : `작업 트리(HEAD ${sha})`} → ${tag} (${RELEASE_PLATFORM})`
@@ -261,6 +264,7 @@ try {
     join(verification, 'source-manifest.json'),
     `${JSON.stringify(manifest)}\n`
   );
+  chmodSync(join(verification, 'source-manifest.json'), 0o444);
   const release = options.source === 'commit' ? sha : '';
   const migrations = migrationSummary(
     readdirSync(join(context, 'prisma', 'migrations'))
@@ -331,6 +335,7 @@ try {
     join(root, 'scripts', 'release-smoke.cjs'),
     join(verification, 'smoke.cjs')
   );
+  chmodSync(join(verification, 'smoke.cjs'), 0o444);
   const smoke = docker(
     [
       'run',
