@@ -29,6 +29,7 @@ import {
   fields,
 } from './common.mjs';
 import { applyReviewedChecks, allowReviewedChecks } from './manual-db.mjs';
+import { findRelease } from './release-cache.mjs';
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const repository = 'mooonseok/woori_server';
 const [mode, ...args] = process.argv.slice(2);
@@ -144,20 +145,29 @@ async function main() {
     });
     await run('pnpm', ['policy:quality'], { cwd: source.dir });
     rmSync(join(source.dir, '.env'));
-    const out = join(base, 'releases', `${mode}-${head}-${Date.now()}`);
-    mkdirSync(dirname(out), { recursive: true, mode: 0o700 });
-    log('검증된 linux/amd64 배포 이미지를 빌드합니다.');
-    await run(
-      process.execPath,
-      [
-        join(source.dir, 'scripts/release-image.mjs'),
-        '--commit',
-        head,
-        '--out',
-        out,
-      ],
-      { cwd: root }
+    const cached = await findRelease(
+      [join(base, 'releases'), expand('~/.woori/releases')],
+      head
     );
+    const out =
+      cached ?? join(base, 'releases', `${mode}-${head}-${Date.now()}`);
+    mkdirSync(dirname(out), { recursive: true, mode: 0o700 });
+    if (cached) {
+      log(`기존 릴리스 재사용 (커밋·검증 기록·SHA256 확인): ${cached}`);
+    } else {
+      log('검증된 linux/amd64 배포 이미지를 빌드합니다.');
+      await run(
+        process.execPath,
+        [
+          join(source.dir, 'scripts/release-image.mjs'),
+          '--commit',
+          head,
+          '--out',
+          out,
+        ],
+        { cwd: root }
+      );
+    }
     const deploymentEnv = { ...env, RELEASE_DIR: out };
     const runner = join(root, 'deploy/lightsail/deploy-release.sh');
     await current(root, head);
