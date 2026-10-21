@@ -1,0 +1,6 @@
+# /etc/sudoers.d/woori-deploy (root 0440; check with visudo -cf). The
+# woori-deploy SSH key runs only the forced command in its authorized_keys
+# line; this lets that one command run as root and keeps the command text sshd
+# passes in SSH_ORIGINAL_COMMAND. See deploy/lightsail/woori-deploy.sh.
+Defaults:woori-deploy env_keep += "SSH_ORIGINAL_COMMAND"
+woori-deploy ALL=(root) NOPASSWD: /usr/local/lib/woori/woori-deploy.sh ssh
