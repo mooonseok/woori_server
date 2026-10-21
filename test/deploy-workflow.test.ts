@@ -141,8 +141,8 @@ export function deployWorkflowProblems(text: string): string[] {
   const approve = jobs['approve-db'] ?? {};
   check(
     isDeepStrictEqual(wf.on?.push?.branches, [wf.env?.DEPLOY_BRANCH]) &&
-      wf.env?.DEPLOY_BRANCH === 'main',
-    'on.push.branches must be exactly env.DEPLOY_BRANCH (main)'
+      wf.env?.DEPLOY_BRANCH === 'develop',
+    'on.push.branches must be exactly env.DEPLOY_BRANCH (develop)'
   );
   check(!('workflow_run' in (wf.on ?? {})), 'no workflow_run trigger');
   check(
@@ -355,8 +355,8 @@ test('deploy.yml wiring holds and each guarded mutation is caught', () => {
     ],
     'trigger branch drift': [
       deploy.replace(
-        'branches: [&deploy_branch main]',
-        'branches: [develop]\n    tags: [&deploy_branch main]'
+        'branches: [&deploy_branch develop]',
+        'branches: [main]\n    tags: [&deploy_branch develop]'
       ),
       /on\.push\.branches/,
     ],

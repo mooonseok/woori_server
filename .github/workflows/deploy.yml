@@ -1,6 +1,7 @@
 # Production deployment of the server (Lightsail API + worker, one release
-# image). Trigger: a push to the deploy branch (the develop -> main release PR
-# merge; develop itself never deploys), or a manual run on that branch:
+# image). Trigger: a push to the deploy branch, develop (2026-10-21 decision:
+# every merged PR deploys; there is no separate main), or a manual run on that
+# branch:
 # mode deploy (one of its commits, e.g. a redeploy or an older commit that
 # already has this pipeline) or mode rollback (a release still loaded on both
 # hosts; no build, no DB step). The deploy branch is set once, at
@@ -35,7 +36,7 @@
 # approval wait (up to 30 days).
 #
 # One-time settings (names only; no value is in the repository):
-#   environment production, deployment branches: main only
+#   environment production, deployment branches: develop only
 #     secret   DEPLOY_SSH_KEY          private key of the woori-deploy SSH key
 #     variable DEPLOY_SSH_KNOWN_HOSTS  both hosts' key lines (pinned; the worker
 #                                      line under its private IP)
@@ -52,7 +53,7 @@
 name: Deploy
 on:
   push:
-    branches: [&deploy_branch main]
+    branches: [&deploy_branch develop]
   workflow_dispatch:
     inputs:
       mode:
@@ -63,7 +64,7 @@ on:
         options: [deploy, rollback]
         default: deploy
       commit:
-        description: 'deploy: main 커밋 SHA (비우면 main 최신)'
+        description: 'deploy: develop 커밋 SHA (비우면 develop 최신)'
         type: string
         required: false
         default: ''
