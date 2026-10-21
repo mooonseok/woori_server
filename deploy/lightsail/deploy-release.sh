@@ -9,6 +9,7 @@
 #                  read-only DB plan on the API host (prints plan_hash; 21 =
 #                  pending statements need the manual procedure). Nothing on
 #                  the hosts changes.
+#   db             approved DB step only; never swaps API/worker
 #   deploy         DB step (only the approved plan) -> API -> public check ->
 #                  worker. A failed public check rolls the API back; a failed
 #                  worker swap is undone on its host and the API goes back too,
@@ -263,6 +264,17 @@ need_images() {
   done
 }
 
+apply_db() {
+  remote_job woori-api db "$name" "$release" "$approval"
+  case $JOB_RC in
+  0) note "- 운영 DB: ${JOB_RESULT:-?}" ;;
+  20 | 21 | 22) die "운영 DB 단계에서 멈췄습니다 (코드 $JOB_RC, API·워커는 그대로)" "$JOB_RC" ;;
+  5) die "운영 DB 단계가 시작되지 않았습니다 (서비스는 그대로)" ;;
+  4) die "운영 DB 단계 결과 불명: migration 진행 여부를 확인하기 전에는 API를 교체하지 않습니다" 4 ;;
+  *) die "운영 DB 단계 실패 (코드 $JOB_RC, API·워커는 그대로)" ;;
+  esac
+}
+
 case $mode in
 prepare)
   read_release yes
@@ -304,6 +316,16 @@ prepare)
   note "- 승인 값(plan hash): \`$hash\`"
   say "준비 완료: DB 변경 $changes"
   ;;
+db)
+  read_release no
+  approval=${DEPLOY_DB_APPROVAL:-none}
+  [[ $approval =~ ^[0-9a-f]{64}$ ]] || die "DB 승인 값 형식 오류" 2
+  check_roles
+  need_images
+  apply_db
+  say "DB 적용 완료 (API·워커 교체 없음)"
+  ;;
+
 deploy)
   read_release no
   approval=${DEPLOY_DB_APPROVAL:-none}
@@ -315,14 +337,7 @@ deploy)
   check_roles
   need_images
   remote woori-worker check-worker "$name" "$release" || die "워커 --check 실패 (서비스는 그대로)"
-  remote_job woori-api db "$name" "$release" "$approval"
-  case $JOB_RC in
-  0) note "- 운영 DB: ${JOB_RESULT:-?}" ;;
-  20 | 21 | 22) die "운영 DB 단계에서 멈췄습니다 (코드 $JOB_RC, API·워커는 그대로)" "$JOB_RC" ;;
-  5) die "운영 DB 단계가 시작되지 않았습니다 (서비스는 그대로)" ;;
-  4) die "운영 DB 단계 결과 불명: migration 진행 여부를 확인하기 전에는 API를 교체하지 않습니다" 4 ;;
-  *) die "운영 DB 단계 실패 (코드 $JOB_RC, API·워커는 그대로)" ;;
-  esac
+  apply_db
   swap_api "$contract"
   swap_worker
   note "- 결과: 성공"
@@ -387,5 +402,5 @@ reconcile)
   [ "$outcome" != success ] || [ -z "$release" ] || [ "$api_now" = "$release" ] ||
     die "성공으로 끝났는데 운영 release가 $release 가 아닙니다" 1
   ;;
-*) die "사용법: deploy-release.sh prepare|deploy|reconcile|rollback-to <name> <release>" 2 ;;
+*) die "사용법: deploy-release.sh prepare|db|deploy|reconcile|rollback-to <name> <release>" 2 ;;
 esac

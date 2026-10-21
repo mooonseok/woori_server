@@ -447,3 +447,26 @@ test(
     }
   }
 );
+
+test(
+  'terminal db command never replaces API or worker',
+  { timeout: 120_000 },
+  async (t) => {
+    const s = await site(t);
+    const beforeApi = running(s.api, 'woori-api');
+    const beforeWorker = running(s.worker, 'woori-worker');
+    const result = await s.run(['db'], { DEPLOY_DB_APPROVAL: 'd'.repeat(64) });
+    assert.equal(result.code, 0, result.out);
+    assert.equal(running(s.api, 'woori-api'), beforeApi);
+    assert.equal(running(s.worker, 'woori-worker'), beforeWorker);
+    assert.doesNotMatch(result.out, /API 교체 완료|워커 교체 완료/);
+  }
+);
+
+test('terminal db rejects missing approval without replacing services', async (t) => {
+  const s = await site(t);
+  const before = running(s.api, 'woori-api');
+  const result = await s.run(['db']);
+  assert.equal(result.code, 2, result.out);
+  assert.equal(running(s.api, 'woori-api'), before);
+});

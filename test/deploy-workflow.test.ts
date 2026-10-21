@@ -140,9 +140,10 @@ export function deployWorkflowProblems(text: string): string[] {
   } = jobs;
   const approve = jobs['approve-db'] ?? {};
   check(
-    isDeepStrictEqual(wf.on?.push?.branches, [wf.env?.DEPLOY_BRANCH]) &&
+    !('push' in (wf.on ?? {})) &&
+      'workflow_dispatch' in (wf.on ?? {}) &&
       wf.env?.DEPLOY_BRANCH === 'develop',
-    'on.push.branches must be exactly env.DEPLOY_BRANCH (develop)'
+    'manual-only workflow_dispatch on develop required'
   );
   check(!('workflow_run' in (wf.on ?? {})), 'no workflow_run trigger');
   check(
@@ -354,11 +355,8 @@ test('deploy.yml wiring holds and each guarded mutation is caught', () => {
       /deploy needs prepare and the approval/,
     ],
     'trigger branch drift': [
-      deploy.replace(
-        'branches: [&deploy_branch develop]',
-        'branches: [main]\n    tags: [&deploy_branch develop]'
-      ),
-      /on\.push\.branches/,
+      deploy.replace('on:\n', 'on:\n  push:\n    branches: [develop]\n'),
+      /manual-only/,
     ],
     'cancel in progress': [
       deploy.replace(

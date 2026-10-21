@@ -1,9 +1,6 @@
 name: Quality
 on:
   pull_request:
-  # develop pushes are checked by Deploy through workflow_call below.
-  push:
-    branches: [main]
   # deploy.yml runs these same jobs for the exact commit it deploys.
   workflow_call:
     inputs:
