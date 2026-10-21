@@ -2,7 +2,10 @@ import 'reflect-metadata';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createECDH, randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { HealthController } from '../src/domain/health/health.controller';
+import { API_CONTRACT_VERSION } from '../src/common/configurations/release';
 
 // readyz reports whether the push keys are loaded (not whether a delivery
 // works); a DB or mail failure still answers 503 without details.
@@ -82,4 +85,26 @@ test('readiness reports loaded push keys and keeps failures generic', async () =
       if (v === undefined) delete process.env[n];
       else process.env[n] = v;
   }
+});
+
+// Client deployments compare /healthz contract with their minimum version, so
+// the compiled value must be exactly the OpenAPI document's info.version (a
+// plain x.y.z string) and the Liveness schema must require it.
+test('liveness reports the OpenAPI contract version it was built with', () => {
+  // Compiled tests run from dist/test; the document stays at the repo root.
+  const openapi = JSON.parse(
+    readFileSync(join(__dirname, '../../contracts/openapi.json'), 'utf8')
+  );
+  assert.equal(API_CONTRACT_VERSION, openapi.info.version);
+  assert.match(API_CONTRACT_VERSION, /^\d+\.\d+\.\d+$/);
+  const liveness = openapi.components.schemas.Liveness;
+  assert.ok(liveness.required.includes('contract'));
+  assert.equal(liveness.properties.contract.type, 'string');
+  assert.ok(
+    new RegExp(liveness.properties.contract.pattern).test(API_CONTRACT_VERSION)
+  );
+  const health = new HealthController({} as never, {} as never);
+  const body = health.liveness();
+  assert.equal(body.contract, openapi.info.version);
+  assert.deepEqual(Object.keys(body).sort(), [...liveness.required].sort());
 });

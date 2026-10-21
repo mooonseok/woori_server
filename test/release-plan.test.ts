@@ -134,6 +134,7 @@ test('release.json: only an exact commit on a release branch is deployable and c
     branch: 'origin/develop',
     files: 300,
     migrations: { count: 21, latest: '20261102000000_neutral_member_copy' },
+    contract: '0.30.0',
     checks: {},
     archive: { file: 'a.tar.gz', bytes: 1, sha256: 'f'.repeat(64) },
     createdAt: new Date('2026-10-20T00:00:00Z'),
@@ -143,6 +144,7 @@ test('release.json: only an exact commit on a release branch is deployable and c
   assert.equal(deployable.release, sha);
   assert.equal(deployable.image, 'woori-server:20261020-9ff1a10');
   assert.equal(deployable.platform, 'linux/amd64');
+  assert.equal(deployable.contract, '0.30.0');
   assert.equal(
     releaseManifest({ ...base, source: 'commit', branch: null }).deployable,
     false

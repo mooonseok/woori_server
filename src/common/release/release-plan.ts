@@ -160,6 +160,9 @@ export interface ReleaseManifestInput {
   branch: string | null;
   files: number;
   migrations: { count: number; latest: string | null };
+  // The contract version the image's /healthz reported in the smoke check
+  // (null for releases before the field existed).
+  contract: string | null;
   checks: Record<string, unknown>;
   archive: { file: string; bytes: number; sha256: string };
   createdAt: Date;
@@ -181,6 +184,7 @@ export function releaseManifest(input: ReleaseManifestInput) {
       files: input.files,
     },
     migrations: input.migrations,
+    contract: input.contract,
     checks: input.checks,
     archive: input.archive,
     createdAt: input.createdAt.toISOString(),
