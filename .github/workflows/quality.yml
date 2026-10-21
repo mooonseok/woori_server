@@ -3,6 +3,14 @@ on:
   pull_request:
   push:
     branches: [develop, main]
+  # deploy.yml runs these same jobs for the exact commit it deploys.
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Commit to check (default: the triggering commit)'
+        type: string
+        required: false
+        default: ''
 permissions:
   contents: read
 concurrency:
@@ -14,22 +22,34 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          ref: ${{ inputs.ref }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm policy:ci
         env:
           POLICY_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      # CI only, with digest-pinned images: local policy:quality and pre-push
+      # keep working without Docker or network. actionlint also runs
+      # shellcheck on the workflow scripts.
+      - name: Lint workflows and deploy scripts
+        run: |
+          shopt -s nullglob
+          docker run --rm -v "$PWD:/repo:ro" -w /repo rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -no-color
+          scripts=(deploy/lightsail/*.sh)
+          if [ ${#scripts[@]} -gt 0 ]; then
+            docker run --rm -v "$PWD:/mnt:ro" -w /mnt koalaman/shellcheck@sha256:bb596a0d169b85ddd81d8b6d3a2ff6d5baf5fca10b97f575ebc647c3dff62b3d -x "${scripts[@]}"
+          fi
       - name: Install ffmpeg (video worker and its integration tests)
         run:
           sudo apt-get update && sudo apt-get install -y --no-install-recommends

@@ -1,0 +1,443 @@
+# Production deployment of the server (Lightsail API + worker, one release
+# image). Trigger: a push to the deploy branch, develop (2026-10-21 decision:
+# every merged PR deploys; there is no separate main), or a manual run on that
+# branch:
+# mode deploy (one of its commits, e.g. a redeploy or an older commit that
+# already has this pipeline) or mode rollback (a release still loaded on both
+# hosts; no build, no DB step). The deploy branch is set once, at
+# &deploy_branch below.
+# Order (SETUP.md): Quality of the same commit -> release image
+# (scripts/release-image.mjs: git archive, linux/amd64, offline worker --check
+# and smoke, SHA256SUMS, deployable release.json; no secrets in that job) ->
+# prepare: both hosts receive and verify the image, and the API host computes
+# the read-only DB plan from the migration ledger (statements outside the
+# automatic allowlist stop here for the manual procedure) -> approval of that
+# plan's hash in production-migrations when it changes the DB (after checking
+# the Supabase backup) -> deploy: DB step (owner credential only for the
+# approved plan), API swap with pre-start check, public check, worker swap;
+# a failure rolls back to the previous containers, and an always-run reconcile
+# step finishes or undoes anything a cancel or timeout interrupted. The web
+# deploys after.
+#
+# Quality runs through workflow_call, not workflow_run: workflow_run (like
+# workflow_dispatch) starts from the workflow file on the default branch
+# (develop) with GITHUB_SHA = that branch's head, so it would neither check nor
+# deploy this commit with this file. Calling quality.yml here runs its jobs for
+# the exact target commit, and later jobs `needs:` them.
+#
+# The DB approval value comes from this workflow's own inputs, variables and
+# the run's review history, never from the build job (it runs dependency
+# code); the host applies only a plan whose hash it recomputes as equal.
+# Actions are pinned to commit SHAs (tag in the comment).
+# The repository is public: anyone signed in can download this run's artifacts
+# while they are kept. The image holds the public source and dependencies and
+# no private file (release-smoke checks); it is still kept for one day only,
+# just long enough for prepare. The small release.json artifact stays for the
+# approval wait (up to 30 days).
+#
+# One-time settings (names only; no value is in the repository):
+#   environment production, deployment branches: develop only
+#     secret   DEPLOY_SSH_KEY          private key of the woori-deploy SSH key
+#     variable DEPLOY_SSH_KNOWN_HOSTS  both hosts' key lines (pinned; the worker
+#                                      line under its private IP)
+#     variable DEPLOY_API_HOST         SSH address of the API host
+#     variable DEPLOY_WORKER_HOST      worker private IP (reached via ProxyJump)
+#     variable DEPLOY_SSH_USER, DEPLOY_API_SSH_PORT  optional (woori-deploy, 22)
+#   environment production-migrations: required reviewer, who approves only
+#     after checking the latest Supabase backup; no secrets
+#   repository variables (optional): DEPLOY_PUBLIC_URL (https://api.woori.stream);
+#     DEPLOY_DB_APPROVAL=dispatch only where environments cannot require a
+#     reviewer (private repository on GitHub Free): DB changes then deploy only
+#     from a manual run with approve_db_changes=<plan hash from prepare>.
+# The workflow file must also be on the default branch for manual runs.
+name: Deploy
+on:
+  push:
+    branches: [&deploy_branch develop]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description:
+          'deploy: 커밋 배포 / rollback: 호스트에 남아 있는 이전 릴리스로 빠른
+          롤백'
+        type: choice
+        options: [deploy, rollback]
+        default: deploy
+      commit:
+        description: 'deploy: develop 커밋 SHA (비우면 develop 최신)'
+        type: string
+        required: false
+        default: ''
+      rollback_to:
+        description: 'rollback: 릴리스 이름 (예: 20261020-3513605)'
+        type: string
+        required: false
+        default: ''
+      approve_db_changes:
+        description:
+          'DEPLOY_DB_APPROVAL=dispatch일 때만: prepare가 보인 plan hash'
+        type: string
+        required: false
+        default: ''
+permissions:
+  contents: read
+# One production deployment at a time; a running one is never cancelled (a
+# newer queued run replaces an older queued one).
+concurrency:
+  group: woori-server-production
+  cancel-in-progress: false
+env:
+  DEPLOY_BRANCH: *deploy_branch
+jobs:
+  target:
+    name: Target
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      mode: ${{ steps.target.outputs.mode }}
+      sha: ${{ steps.target.outputs.sha }}
+      name: ${{ steps.target.outputs.name }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: target
+        env:
+          MODE: ${{ inputs.mode || 'deploy' }}
+          REQUESTED: ${{ inputs.commit }}
+          ROLLBACK_TO: ${{ inputs.rollback_to }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/$DEPLOY_BRANCH" ]; then
+            echo "::error::$DEPLOY_BRANCH 브랜치에서만 배포합니다 ($GITHUB_REF)"
+            exit 1
+          fi
+          name=''
+          case $MODE in
+          deploy) requested=${REQUESTED:-$GITHUB_SHA} ;;
+          rollback)
+            if ! [[ $ROLLBACK_TO =~ ^[0-9]{8}-[0-9a-f]{7}$ ]]; then
+              echo "::error::rollback_to는 릴리스 이름(YYYYMMDD-커밋7자)이어야 합니다"
+              exit 1
+            fi
+            name=$ROLLBACK_TO
+            requested=${ROLLBACK_TO#*-}
+            ;;
+          *)
+            echo "::error::mode는 deploy 또는 rollback입니다"
+            exit 1
+            ;;
+          esac
+          if ! [[ $requested =~ ^[0-9a-f]{7,40}$ ]]; then
+            echo "::error::commit은 7~40자 소문자 SHA여야 합니다"
+            exit 1
+          fi
+          if ! sha=$(git rev-parse --verify --quiet "$requested^{commit}"); then
+            echo "::error::커밋을 찾을 수 없습니다"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$sha" "origin/$DEPLOY_BRANCH"; then
+            echo "::error::$DEPLOY_BRANCH 브랜치의 커밋만 배포합니다"
+            exit 1
+          fi
+          {
+            echo "mode=$MODE"
+            echo "sha=$sha"
+            echo "name=$name"
+          } >> "$GITHUB_OUTPUT"
+          echo "대상: $MODE \`$sha\` $name" >> "$GITHUB_STEP_SUMMARY"
+
+  quality:
+    name: Quality
+    needs: target
+    if: needs.target.outputs.mode == 'deploy'
+    uses: ./.github/workflows/quality.yml
+    with:
+      ref: ${{ needs.target.outputs.sha }}
+    permissions:
+      contents: read
+
+  build:
+    name: Release image
+    needs: [target, quality]
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    outputs:
+      meta: ${{ steps.image.outputs.meta }}
+      archive: ${{ steps.image.outputs.archive }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      # Compiles the release helpers that the scripts below load.
+      - run: pnpm build
+      - name: Release running in production
+        id: running
+        env:
+          PUBLIC_URL:
+            ${{ vars.DEPLOY_PUBLIC_URL || 'https://api.woori.stream' }}
+        run: |
+          set -uo pipefail
+          release=$(curl -fsS --max-time 10 --retry 2 "$PUBLIC_URL/healthz" | jq -r '.release // empty')
+          [[ $release =~ ^[0-9a-f]{40}$ ]] || release=unknown
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+      - name: DB summary (advisory)
+        env:
+          TARGET: ${{ needs.target.outputs.sha }}
+          DEPLOYED: ${{ steps.running.outputs.release }}
+        run:
+          node scripts/deploy-plan.mjs --target "$TARGET" --deployed "$DEPLOYED"
+      - name: Build and verify the release image
+        id: image
+        env:
+          TARGET: ${{ needs.target.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+          ATTEMPT: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          # release-image.mjs asks `git ls-remote` whether origin develop/main
+          # holds the commit; this read-only token (masked) is for that only.
+          basic=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          echo "::add-mask::$basic"
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0=http.https://github.com/.extraheader
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $basic"
+          git fetch --no-tags --quiet origin develop "$DEPLOY_BRANCH"
+          out="$RUNNER_TEMP/release"
+          node scripts/release-image.mjs --commit "$TARGET" --out "$out"
+          unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GH_TOKEN
+          jq -e --arg sha "$TARGET" '.deployable == true and .release == $sha' "$out/release.json" > /dev/null
+          {
+            echo "dir=$out"
+            echo "meta=server-release-meta-$ATTEMPT"
+            echo "archive=server-release-image-$ATTEMPT"
+          } >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ steps.image.outputs.meta }}
+          path: |
+            ${{ steps.image.outputs.dir }}/release.json
+            ${{ steps.image.outputs.dir }}/SHA256SUMS
+          retention-days: 30
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ steps.image.outputs.archive }}
+          path: |
+            ${{ steps.image.outputs.dir }}/release.json
+            ${{ steps.image.outputs.dir }}/SHA256SUMS
+            ${{ steps.image.outputs.dir }}/*.tar.gz
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+
+  prepare:
+    name: Prepare hosts and DB plan
+    needs: [target, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    environment: production
+    outputs:
+      plan_changes: ${{ steps.prepare.outputs.plan_changes }}
+      plan_hash: ${{ steps.prepare.outputs.plan_hash }}
+      plan_mode: ${{ steps.prepare.outputs.plan_mode }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: deploy/lightsail
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ needs.build.outputs.archive }}
+          path: ${{ runner.temp }}/release
+      - name: SSH settings
+        id: ssh
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.DEPLOY_SSH_KNOWN_HOSTS }}
+          API_HOST: ${{ vars.DEPLOY_API_HOST }}
+          API_PORT: ${{ vars.DEPLOY_API_SSH_PORT || '22' }}
+          WORKER_HOST: ${{ vars.DEPLOY_WORKER_HOST }}
+          SSH_USER: ${{ vars.DEPLOY_SSH_USER || 'woori-deploy' }}
+        run:
+          echo "config=$(bash deploy/lightsail/ssh-config.sh
+          "$RUNNER_TEMP/ssh")" >> "$GITHUB_OUTPUT"
+      - name: Prepare
+        id: prepare
+        env:
+          RELEASE_DIR: ${{ runner.temp }}/release
+          DEPLOY_SSH_CONFIG: ${{ steps.ssh.outputs.config }}
+          DEPLOY_EXPECT_RELEASE: ${{ needs.target.outputs.sha }}
+        run: bash deploy/lightsail/deploy-release.sh prepare
+      - name: Remove SSH key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/ssh"
+
+  approve-db:
+    name: DB 변경 승인 (Supabase 백업 확인 후)
+    needs: prepare
+    if:
+      needs.prepare.outputs.plan_changes == 'true' && vars.DEPLOY_DB_APPROVAL !=
+      'dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production-migrations
+    steps:
+      - env:
+          PLAN_HASH: ${{ needs.prepare.outputs.plan_hash }}
+          PLAN_MODE: ${{ needs.prepare.outputs.plan_mode }}
+        run: |
+          {
+            echo "### 운영 DB 변경 승인"
+            echo "- 승인한 계획(plan hash): \`$PLAN_HASH\` (방식 $PLAN_MODE, 대기 목록은 prepare 요약)"
+            echo "- API 호스트는 적용 직전에 같은 계획인지 다시 계산해 다르면 멈춥니다"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Deploy to Lightsail
+    needs: [target, build, prepare, approve-db]
+    if:
+      ${{ !cancelled() && needs.prepare.result == 'success' &&
+      (needs.approve-db.result == 'success' || needs.approve-db.result ==
+      'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    environment:
+      name: production
+      url: ${{ vars.DEPLOY_PUBLIC_URL || 'https://api.woori.stream' }}/healthz
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: deploy/lightsail
+      - name: DB change approval
+        id: approval
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPROVAL_MODE: ${{ vars.DEPLOY_DB_APPROVAL }}
+          DISPATCH_APPROVAL: ${{ inputs.approve_db_changes }}
+          PLAN_HASH: ${{ needs.prepare.outputs.plan_hash }}
+        run: |
+          set -euo pipefail
+          value=none
+          if [ "$APPROVAL_MODE" = dispatch ]; then
+            if [ -n "$DISPATCH_APPROVAL" ]; then
+              [[ $DISPATCH_APPROVAL =~ ^[0-9a-f]{64}$ ]] || { echo "::error::approve_db_changes 형식 오류"; exit 1; }
+              value=$DISPATCH_APPROVAL
+            fi
+          else
+            # Only a recorded approval of production-migrations in this run
+            # passes the plan hash on; the host recomputes and compares it.
+            approved=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/approvals" \
+              --jq '[.[] | select(.state == "approved") | .environments[].name] | index("production-migrations") != null')
+            if [ "$approved" = true ]; then value=$PLAN_HASH; fi
+          fi
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ needs.build.outputs.meta }}
+          path: ${{ runner.temp }}/release
+      - name: SSH settings
+        id: ssh
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.DEPLOY_SSH_KNOWN_HOSTS }}
+          API_HOST: ${{ vars.DEPLOY_API_HOST }}
+          API_PORT: ${{ vars.DEPLOY_API_SSH_PORT || '22' }}
+          WORKER_HOST: ${{ vars.DEPLOY_WORKER_HOST }}
+          SSH_USER: ${{ vars.DEPLOY_SSH_USER || 'woori-deploy' }}
+        run:
+          echo "config=$(bash deploy/lightsail/ssh-config.sh
+          "$RUNNER_TEMP/ssh")" >> "$GITHUB_OUTPUT"
+      - name: Deploy
+        id: deploy
+        env:
+          RELEASE_DIR: ${{ runner.temp }}/release
+          DEPLOY_SSH_CONFIG: ${{ steps.ssh.outputs.config }}
+          DEPLOY_PUBLIC_URL:
+            ${{ vars.DEPLOY_PUBLIC_URL || 'https://api.woori.stream' }}
+          DEPLOY_DB_APPROVAL: ${{ steps.approval.outputs.value }}
+          DEPLOY_EXPECT_RELEASE: ${{ needs.target.outputs.sha }}
+        run: bash deploy/lightsail/deploy-release.sh deploy
+      - name: Reconcile hosts
+        if: always() && steps.ssh.outcome == 'success'
+        env:
+          DEPLOY_SSH_CONFIG: ${{ steps.ssh.outputs.config }}
+          DEPLOY_PUBLIC_URL:
+            ${{ vars.DEPLOY_PUBLIC_URL || 'https://api.woori.stream' }}
+          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
+          DEPLOY_RELEASE: ${{ needs.target.outputs.sha }}
+          RELEASE_DIR: ${{ runner.temp }}/release
+        run: |
+          name=$(jq -r '.image | sub("^[^:]*:"; "")' "$RELEASE_DIR/release.json" 2>/dev/null || true)
+          DEPLOY_RELEASE_NAME=$name bash deploy/lightsail/deploy-release.sh reconcile
+      - name: Remove SSH key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/ssh"
+
+  rollback:
+    name: Fast rollback
+    needs: target
+    if: needs.target.outputs.mode == 'rollback'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    environment:
+      name: production
+      url: ${{ vars.DEPLOY_PUBLIC_URL || 'https://api.woori.stream' }}/healthz
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: deploy/lightsail
+      - name: SSH settings
+        id: ssh
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.DEPLOY_SSH_KNOWN_HOSTS }}
+          API_HOST: ${{ vars.DEPLOY_API_HOST }}
+          API_PORT: ${{ vars.DEPLOY_API_SSH_PORT || '22' }}
+          WORKER_HOST: ${{ vars.DEPLOY_WORKER_HOST }}
+          SSH_USER: ${{ vars.DEPLOY_SSH_USER || 'woori-deploy' }}
+        run:
+          echo "config=$(bash deploy/lightsail/ssh-config.sh
+          "$RUNNER_TEMP/ssh")" >> "$GITHUB_OUTPUT"
+      - name: Roll back
+        id: deploy
+        env:
+          DEPLOY_SSH_CONFIG: ${{ steps.ssh.outputs.config }}
+          DEPLOY_PUBLIC_URL:
+            ${{ vars.DEPLOY_PUBLIC_URL || 'https://api.woori.stream' }}
+          NAME: ${{ needs.target.outputs.name }}
+          RELEASE: ${{ needs.target.outputs.sha }}
+        run:
+          bash deploy/lightsail/deploy-release.sh rollback-to "$NAME" "$RELEASE"
+      - name: Reconcile hosts
+        if: always() && steps.ssh.outcome == 'success'
+        env:
+          DEPLOY_SSH_CONFIG: ${{ steps.ssh.outputs.config }}
+          DEPLOY_PUBLIC_URL:
+            ${{ vars.DEPLOY_PUBLIC_URL || 'https://api.woori.stream' }}
+          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
+          DEPLOY_RELEASE: ${{ needs.target.outputs.sha }}
+          DEPLOY_RELEASE_NAME: ${{ needs.target.outputs.name }}
+        run: bash deploy/lightsail/deploy-release.sh reconcile
+      - name: Remove SSH key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/ssh"

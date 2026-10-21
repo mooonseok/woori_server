@@ -2,8 +2,10 @@
 // scripts/release-image.mjs, started with --network none). Checks the image
 // holds exactly the exported source, runs as the non-root node user on amd64,
 // ships no private configuration files, and that the API boots in production
-// mode with synthetic settings and reports the expected release. Prints
-// PASS lines and one JSON summary; never prints configuration values.
+// mode with synthetic settings and reports the expected release and, when the
+// image's contracts/openapi.json Liveness schema requires it, the contract
+// version (= that document's info.version). Prints PASS lines and one JSON
+// summary; never prints configuration values.
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
@@ -13,6 +15,14 @@ const manifest = JSON.parse(
   fs.readFileSync('/verification/source-manifest.json', 'utf8')
 );
 const expected = process.env.EXPECT_RELEASE || null;
+// Older commits (before /healthz reported a contract) must not report one.
+const openapi = JSON.parse(
+  fs.readFileSync('/app/contracts/openapi.json', 'utf8')
+);
+const expectedContract =
+  openapi.components?.schemas?.Liveness?.required?.includes('contract')
+    ? openapi.info.version
+    : undefined;
 let checked = 0;
 for (const [name, hash] of Object.entries(manifest.files)) {
   const actual = crypto
@@ -103,13 +113,23 @@ const get = (path) =>
     }
     assert.equal(health?.status, 'alive', 'API /healthz did not answer');
     assert.equal(health.release, expected, 'API release does not match');
+    assert.equal(
+      health.contract,
+      expectedContract,
+      'API contract does not match contracts/openapi.json'
+    );
     // No network: the DB is unreachable, so readiness must refuse.
     assert.equal((await get('/readyz')).status, 503, 'readyz without a DB');
     console.log(
-      'PASS: production-mode API boots, /healthz reports the release, /readyz 503 without a DB'
+      'PASS: production-mode API boots, /healthz reports the release and contract, /readyz 503 without a DB'
     );
     console.log(
-      JSON.stringify({ smoke: 'pass', sourceFiles: checked, release: expected })
+      JSON.stringify({
+        smoke: 'pass',
+        sourceFiles: checked,
+        release: expected,
+        contract: expectedContract ?? null,
+      })
     );
   } catch (error) {
     console.error(`FAIL: ${error.message}`);

@@ -8,7 +8,10 @@ import { MediaStorageService } from '../../common/media/media-storage.service';
 import { Public } from '../../common/decorators/public.decorator';
 import { PrismaService } from '../../common/modules/prisma/prisma.service';
 import { mailConfigured } from '../../common/mail/mail-config';
-import { releaseRevision } from '../../common/configurations/release';
+import {
+  API_CONTRACT_VERSION,
+  releaseRevision,
+} from '../../common/configurations/release';
 import { webPushConfig } from '../../common/push/web-push.config';
 
 // Startup already rejects a partial or invalid push configuration; this only
@@ -37,6 +40,7 @@ export class HealthController {
       implementation: 'auth-groups-media',
       featuresReady: false,
       release: releaseRevision(),
+      contract: API_CONTRACT_VERSION,
     };
   }
   @Public()

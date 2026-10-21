@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createApp } from '../src/bootstrap';
 import { runtimeConfig } from '../src/common/configurations/runtime.config';
+import { API_CONTRACT_VERSION } from '../src/common/configurations/release';
 
 test('health contract, private routes, fabricated credentials and CORS', async () => {
   // No DB or cloud credentials are needed and no domain query is reachable.
@@ -28,6 +29,7 @@ test('health contract, private routes, fabricated credentials and CORS', async (
       implementation: 'auth-groups-media',
       featuresReady: false,
       release: null,
+      contract: API_CONTRACT_VERSION,
     });
     assert.equal(health.headers['cache-control'], 'no-store');
     // Only a full lowercase git SHA is echoed; other text reads as unknown.

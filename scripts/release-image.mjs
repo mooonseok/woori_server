@@ -5,10 +5,13 @@
 //   2. `docker build` with deploy/worker.Dockerfile, WOORI_RELEASE=<commit>;
 //   3. checks the image with networking disabled: worker --check (ffmpeg,
 //      libx264, AAC, preset, release) and scripts/release-smoke.cjs (source
-//      hashes, amd64, non-root, no private files, API boot + /healthz release);
-//   4. `docker save | gzip` + SHA256SUMS + release.json.
+//      hashes, amd64, non-root, no private files, API boot + /healthz release
+//      and contract);
+//   4. `docker save | gzip` + SHA256SUMS + release.json (its `contract` is the
+//      /healthz contract version, read by .github/workflows/deploy.yml).
 // Deployable only when the current origin develop or main head (checked with
-// `git ls-remote`) contains the commit. A failed run removes its output folder
+// `git ls-remote`; on a GitHub runner deploy.yml supplies a read-only token for
+// it) contains the commit. A failed run removes its output folder
 // and image tag. Does not push, upload, deploy or touch any database; prints
 // no configuration values. Commits before this script existed cannot be built
 // with it (their Dockerfile has no WOORI_RELEASE); keep earlier images for
@@ -357,6 +360,7 @@ try {
     `${archive.sha256}  ${archiveFile}\n`,
     { mode: 0o600 }
   );
+  const smokeSummary = JSON.parse(smoke.trim().split('\n').at(-1));
   const result = releaseManifest({
     name,
     source: options.source,
@@ -364,12 +368,13 @@ try {
     branch,
     files: Object.keys(manifest.files).length,
     migrations,
+    contract: smokeSummary.contract ?? null,
     checks: {
       architecture,
       user,
       revisionLabel: label || null,
       worker: JSON.parse(workerLine),
-      smoke: JSON.parse(smoke.trim().split('\n').at(-1)),
+      smoke: smokeSummary,
     },
     archive: { file: archiveFile, ...archive },
     createdAt: now,
