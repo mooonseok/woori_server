@@ -14,6 +14,27 @@
 - 관리자 웹: `admin.woori.stream` DNS 레코드가 없어 미배포다.
 - 이 시점 API·웹은 실행 버전을 외부에 표시하지 않았다. 아래 "릴리스 이미지"와 Pages `release.json` 이후 배포부터 확인할 수 있다.
 
+2026-10-20 사용자 승인으로 반영한 운영 상태:
+
+- 운영 DB: 닉네임 migration 2개 적용, 21개 모두 적용·체크섬 일치(적용 전 회원 0명).
+- API: `woori-server:20261020-3513605`(커밋 `3513605`), `/healthz` release 일치, `/readyz` push true. 이전 컨테이너는 롤백용으로 `woori-api-20261019-1` 이름으로 정지해 두었다.
+- 워커: 같은 이미지로 교체했다. 이전 워커를 SIGTERM으로 먼저 정지(종료 코드 0)한 뒤 새 워커를 실행해, 실행 중인 워커는 하나다. 시작 로그 release가 일치하고 heartbeat `lastPassOk`·`videoReady`가 true다. 이전 컨테이너는 `woori-worker-20261019-1`로 정지해 두었다. 실제 작업 완료(합성 업로드)는 아직 확인하지 않았다.
+- 회원 웹: 사용자가 기존 Pages 프로젝트 `woori-web`에 ZIP으로 운영 배포했다(커밋 `5723576`). `/release.json`이 이 커밋을 가리키고(`dirty:false`, `pushed:true`, `localEnv:false`), 보안 헤더·CSP 해시·정적 파일 캐시·404·`.html` 리디렉션과 데스크톱·모바일 로그인 화면을 확인했다.
+  - Cloudflare Web Analytics가 브라우저 요청에 `static.cloudflareinsights.com` 스크립트를 자동으로 끼워 넣고, CSP가 이를 차단한다. 앱 동작에는 영향이 없지만 콘솔 오류가 나고 분석도 수집되지 않으므로 자동 삽입을 끈다. 필요하면 수동 설치와 CSP 수정을 함께 한다.
+  - `/sw.js`가 `_headers`의 `no-cache` 대신 `max-age=14400`으로 나간다(존의 Browser Cache TTL 설정이 덮어쓴 것으로 보인다). 서비스 워커는 `updateViaCache: 'none'`으로 등록돼 업데이트가 늦어지지 않는다. 헤더를 맞추려면 Browser Cache TTL을 "Respect Existing Headers"로 둔다(선택).
+- 관리자 웹은 아직 배포하지 않았다(`admin.woori.stream` DNS 없음).
+
+API 서버 실제 구성(읽기 전용 확인):
+
+- Lightsail 서울, 2 vCPU·1.9GB, compose 없이 `docker run`으로 운영한다. 컨테이너는 `woori-api`와 `woori-caddy`(caddy:2-alpine)이고 Docker 네트워크 `woori`를 쓴다.
+- env 파일: `/opt/woori/env/common.env`, `/opt/woori/env/api.env`(0600). Supabase CA: `/opt/woori/certs/supabase-ca.crt`를 `/run/certs/supabase-ca.crt`에 읽기 전용으로 마운트한다.
+- Caddy 설정: `/opt/woori/caddy/Caddyfile`(`reverse_proxy woori-api:3001`, `/_proxy-health`). 이미지 보관 위치: `/opt/woori/images/<릴리스>/`.
+- API 실행 명령: `docker run -d --name woori-api --network woori --restart unless-stopped --init --log-opt max-size=10m --log-opt max-file=3 --env-file /opt/woori/env/common.env --env-file /opt/woori/env/api.env -v /opt/woori/certs/supabase-ca.crt:/run/certs/supabase-ca.crt:ro woori-server:<태그> node dist/src/main.js`
+- 워커 서버: Lightsail 서울, 2 vCPU·3.8GB, 사설 IP `172.26.1.167`. 이 Mac에서 직접 접속할 수 없어 API 서버를 경유(SSH ProxyJump)해 접속한다. 기본 bridge 네트워크에 `woori-worker` 컨테이너 하나만 돈다. env 파일은 `/opt/woori/env/common.env`, CA 마운트는 API와 같다.
+- 워커 실행 명령: `docker run -d --name woori-worker --restart unless-stopped --init --stop-timeout 120 --log-opt max-size=10m --log-opt max-file=3 --env-file /opt/woori/env/common.env -v /opt/woori/certs/supabase-ca.crt:/run/certs/supabase-ca.crt:ro woori-server:<태그> node dist/src/worker/main.js`
+- 워커 교체: 같은 이미지로 `--check`(네트워크 없음)를 확인한다 → `docker stop -t 120 woori-worker`로 이전 워커를 먼저 정지한다(동시 실행 방지, 진행 중 작업은 대기열로 복귀) → 이름을 `woori-worker-<이전 태그>`로 바꾼다 → 새 워커를 실행한다. 시작 로그의 release와 heartbeat로 확인한다.
+- 교체 순서: 같은 설정의 사전 기동 컨테이너(`woori-api-next`)로 healthz·readyz를 확인하고 지운다 → 기존 컨테이너를 정지하고 `woori-api-<이전 태그>`로 이름을 바꾼다 → 새 컨테이너를 실행한다. 롤백은 이름을 되바꿔 재시작한다.
+
 ## 저장소·도구
 
 두 저장소를 원하는 위치에 나란히 둔다. 특정 사용자명이나 `/Users/...` 경로는 필요 없다.
