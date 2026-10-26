@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "repository": "woori_server",
+  "profiles": {
+    "policy": {
+      "description": "하네스·스킬·정책 변경: 정적 연결, 안전 fixture, 포맷 검사",
+      "steps": [
+        {
+          "id": "policy-check",
+          "script": "policy:check"
+        },
+        {
+          "id": "policy-test",
+          "script": "policy:test"
+        },
+        {
+          "id": "format-check",
+          "script": "format:check"
+        }
+      ]
+    },
+    "server-unit": {
+      "description": "API·순수 로직: 정책, 포맷, Prisma 검증, 타입, 단위 및 로컬 배포 fixture. DB 통합 검사는 별도다.",
+      "steps": [
+        {
+          "id": "policy-check",
+          "script": "policy:check"
+        },
+        {
+          "id": "policy-test",
+          "script": "policy:test"
+        },
+        {
+          "id": "format-check",
+          "script": "format:check"
+        },
+        {
+          "id": "prisma-validate",
+          "script": "prisma:validate"
+        },
+        {
+          "id": "typecheck",
+          "script": "typecheck"
+        },
+        {
+          "id": "test",
+          "script": "test"
+        }
+      ]
+    },
+    "server-db": {
+      "description": "로컬 검증이 승인된 작업에서만 선택. 127.0.0.1:55439/woori_dev를 부모로 임시 DB 생성·migration·테스트·삭제. 기존/운영 DB에 migration하지 않는다.",
+      "steps": [
+        {
+          "id": "test-integration",
+          "script": "test:integration",
+          "requires": ["local-db", "ffmpeg"]
+        }
+      ]
+    },
+    "worker": {
+      "description": "워커 빌드와 --check만 실행. 상시 워커 시작이나 실제 R2 작업은 포함하지 않는다.",
+      "steps": [
+        {
+          "id": "build",
+          "script": "build"
+        },
+        {
+          "id": "check-worker",
+          "script": "check:worker",
+          "requires": ["ffmpeg"]
+        }
+      ]
+    },
+    "full": {
+      "description": "전체 자동 검사. 로컬 임시 DB 생성·삭제를 포함하며 운영·실제 R2 작업 검증은 별도다.",
+      "steps": [
+        {
+          "id": "policy-check",
+          "script": "policy:check"
+        },
+        {
+          "id": "policy-test",
+          "script": "policy:test"
+        },
+        {
+          "id": "format-check",
+          "script": "format:check"
+        },
+        {
+          "id": "prisma-validate",
+          "script": "prisma:validate"
+        },
+        {
+          "id": "typecheck",
+          "script": "typecheck"
+        },
+        {
+          "id": "test",
+          "script": "test"
+        },
+        {
+          "id": "test-integration",
+          "script": "test:integration",
+          "requires": ["local-db", "ffmpeg"]
+        },
+        {
+          "id": "check-worker",
+          "script": "check:worker",
+          "requires": ["ffmpeg"]
+        }
+      ]
+    }
+  }
+}
