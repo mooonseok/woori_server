@@ -1,13 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import {
-  readFileSync,
-  existsSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-  chmodSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync } from 'node:fs';
 import { join, basename } from 'node:path';
 export function git(args, cwd = process.cwd(), options = {}) {
   return execFileSync('git', args, {
@@ -150,53 +142,3 @@ export function quality(cwd) {
         ];
   for (const task of tasks) run('pnpm', ['run', task], cwd);
 }
-// Verify exactly the outgoing commit in a disposable checkout, not a dirty working tree.
-export function verifyCommit(cwd, sha) {
-  const dir = mkdtempSync(join(tmpdir(), 'woori-push-'));
-  chmodSync(dir, 0o700);
-  try {
-    const archive = execFileSync('git', ['archive', sha], {
-      cwd,
-      maxBuffer: 128 * 1024 * 1024,
-    });
-    const unpack = spawnSync('tar', ['-x', '-C', dir], { input: archive });
-    if (unpack.status !== 0) throw new Error('Cannot extract outgoing commit');
-    // Registered hooks resolve their paths via Git, even in an archived snapshot.
-    run('git', ['init', '--quiet', '-b', 'push-verification'], dir);
-    if (
-      JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')).name ===
-      'woori_server'
-    ) {
-      // Preserve the existing runner guard; only isolated local connection values enter the temp checkout.
-      if (!existsSync(join(cwd, '.env')))
-        throw new Error(
-          'Server integration needs the isolated local .env setup.'
-        );
-      const parsed = awaitEnv(readFileSync(join(cwd, '.env'), 'utf8'));
-      for (const key of ['DATABASE_URL', 'MIGRATION_DATABASE_URL']) {
-        const url = new URL(parsed[key]);
-        if (
-          url.hostname !== '127.0.0.1' ||
-          url.port !== '55439' ||
-          url.pathname !== '/woori_dev'
-        )
-          throw new Error(
-            'Only isolated local DB credentials allowed for pre-push.'
-          );
-      }
-      writeFileSync(
-        join(dir, '.env'),
-        ['DATABASE_URL', 'MIGRATION_DATABASE_URL']
-          .map((key) => `${key}=${JSON.stringify(parsed[key])}`)
-          .join('\n') + '\n',
-        { mode: 0o600 }
-      );
-    }
-    run('pnpm', ['install', '--frozen-lockfile', '--ignore-scripts'], dir);
-    quality(dir);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
-// Node's dotenv parser handles quoting without printing the source.
-import { parseEnv as awaitEnv } from 'node:util';

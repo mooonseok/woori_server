@@ -37,9 +37,8 @@ jobs:
       - run: pnpm policy:ci
         env:
           POLICY_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-      # CI only, with digest-pinned images: local policy:quality and pre-push
-      # keep working without Docker or network. actionlint also runs
-      # shellcheck on the workflow scripts.
+      # CI-only workflow/script lint with digest-pinned images.
+      # Fast pre-push does not invoke Docker; actionlint also runs shellcheck.
       - name: Lint workflows and deploy scripts
         run: |
           shopt -s nullglob
