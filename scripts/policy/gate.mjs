@@ -1,4 +1,3 @@
-import { formatStaged } from './format-staged.mjs';
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import {
@@ -9,7 +8,6 @@ import {
   checkMigrations,
   messageProblems,
   checkPush,
-  verifyCommit,
   zero,
   quality,
 } from './core.mjs';
@@ -30,6 +28,7 @@ try {
       }).status === 0
     )
       checkMigrations(cwd, 'HEAD');
+    const { formatStaged } = await import('./format-staged.mjs');
     await formatStaged(cwd);
     git(['diff', '--cached', '--check'], cwd);
   } else if (mode === 'commit-msg') {
@@ -55,8 +54,10 @@ try {
           throw new Error('Outgoing commit has prohibited signature.');
       }
       checkMigrations(cwd, base, local);
-      verifyCommit(cwd, local);
     }
+    console.log(
+      '[woori policy] pre-push policy checks passed; full tests and builds run in PR Quality.'
+    );
   } else if (mode === 'ci') {
     scanSnapshot(cwd, 'HEAD');
     const base = process.env.POLICY_BASE_SHA;

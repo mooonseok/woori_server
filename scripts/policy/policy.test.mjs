@@ -9,6 +9,8 @@ import {
   readFileSync,
   chmodSync,
   symlinkSync,
+  existsSync,
+  unlinkSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -18,7 +20,7 @@ import {
   contentProblems,
   messageProblems,
   checkPush,
-  verifyCommit,
+  quality,
 } from './core.mjs';
 import { evaluate } from './tool-guard.mjs';
 const source = resolve(fileURLToPath(new URL('../..', import.meta.url)));
@@ -175,31 +177,204 @@ test('feature fast-forward allowed and diverging update rejected', (t) => {
   );
   assert.throws(() => checkPush(f.dir, 'malformed'), /Invalid/);
 });
-test('outgoing validation uses archived commit not dirty worktree; failed quality blocks', (t) => {
-  const f = fixture(t);
-  f.write('package.json', JSON.stringify({ name: 'woori_client' }));
-  f.write('snapshot.txt', 'committed');
-  assert.equal(f.commit().status, 0);
-  f.write('snapshot.txt', 'dirty');
-  const bin = mkdtempSync(join(tmpdir(), 'woori-fake-pnpm-'));
-  t.after(() => rmSync(bin, { recursive: true, force: true }));
-  const originalPath = process.env.PATH;
-  const fake = join(bin, 'pnpm');
+function runPushHook(f, local, remote, env = process.env) {
+  const inputPath = join(f.dir, 'push-input.txt');
+  writeFileSync(
+    inputPath,
+    `refs/heads/feature/test ${local} refs/heads/feature/test ${remote}\n`
+  );
+  return f.invoke(['hook', 'run', `--to-stdin=${inputPath}`, 'pre-push'], {
+    env,
+  });
+}
+
+for (const name of ['woori_client', 'woori_server']) {
+  test(`${name}: installed pre-push needs no dependencies or DB and checks the outgoing snapshot`, (t) => {
+    const f = fixture(t);
+    const base = f.sha();
+    assert.equal(
+      f.invoke(['update-ref', 'refs/remotes/origin/develop', base]).status,
+      0
+    );
+    f.write(
+      'package.json',
+      JSON.stringify({ name, scripts: { build: 'exit 73', test: 'exit 73' } })
+    );
+    f.write('snapshot.txt', 'committed');
+    assert.equal(f.commit().status, 0);
+    const local = f.sha();
+    unlinkSync(join(f.dir, 'node_modules'));
+    // Dirty/index credentials must not affect the already-created outgoing commit.
+    f.write('snapshot.txt', ['ghp_', 'x'.repeat(36)].join(''));
+    assert.equal(f.invoke(['add', 'snapshot.txt']).status, 0);
+    const before = f.invoke(['diff', '--cached']).stdout;
+    const bin = mkdtempSync(join(tmpdir(), 'woori-no-heavy-push-'));
+    t.after(() => rmSync(bin, { recursive: true, force: true }));
+    for (const tool of ['pnpm', 'docker', 'psql']) {
+      writeFileSync(
+        join(bin, tool),
+        '#!/bin/sh\nprintf called >> "$WOORI_POLICY_CALLS"\nexit 73\n'
+      );
+      chmodSync(join(bin, tool), 0o755);
+    }
+    const marker = join(bin, 'calls');
+    const env = {
+      ...process.env,
+      PATH: `${bin}:${process.env.PATH}`,
+      NVM_DIR: join(bin, 'no-nvm-override'),
+      WOORI_POLICY_CALLS: marker,
+    };
+    // Existing and new remote branches both work, without a local .env.
+    for (const remote of [base, '0'.repeat(40)]) {
+      const result = runPushHook(f, local, remote, env);
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(
+        result.stdout + result.stderr,
+        /full tests and builds run in PR Quality/
+      );
+    }
+    f.write('.env', 'not a valid database configuration');
+    assert.equal(runPushHook(f, local, base, env).status, 0);
+    assert.equal(existsSync(marker), false);
+    assert.equal(f.invoke(['diff', '--cached']).stdout, before);
+    assert.equal(
+      readFileSync(join(f.dir, 'snapshot.txt'), 'utf8'),
+      ['ghp_', 'x'.repeat(36)].join('')
+    );
+  });
+}
+
+// Construct external-style commits only inside disposable fixtures. The installed
+// pre-push hook must inspect them even if local pre-commit never saw the content.
+function externalCommit(f, message) {
+  assert.equal(f.invoke(['add', '.']).status, 0);
+  const tree = f.invoke(['write-tree']);
+  assert.equal(tree.status, 0, tree.stderr);
+  const result = f.invoke(['commit-tree', tree.stdout.trim(), '-p', f.sha()], {
+    input: `${message}\n`,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const sha = result.stdout.trim();
+  assert.equal(f.invoke(['update-ref', 'HEAD', sha]).status, 0);
+  return sha;
+}
+
+for (const kind of ['credential', 'signature', 'migration']) {
+  test(`installed fast pre-push still rejects outgoing ${kind} violations`, (t) => {
+    const f = fixture(t);
+    f.write('prisma/migrations/001/migration.sql', 'SELECT 1;');
+    assert.equal(f.commit().status, 0);
+    const base = f.sha();
+    const secret = ['ghp_', 'y'.repeat(36)].join('');
+    if (kind === 'credential') f.write('config.txt', secret);
+    if (kind === 'migration')
+      f.write('prisma/migrations/001/migration.sql', 'SELECT 2;');
+    const bad = externalCommit(
+      f,
+      kind === 'signature'
+        ? '외부 변경\n\nCo-authored-by: Fixture <fixture@example.invalid>'
+        : '외부 변경'
+    );
+    // A clean tip must not conceal a credential in an earlier outgoing commit.
+    let local = bad;
+    if (kind === 'credential') {
+      f.write('config.txt', 'clean');
+      local = externalCommit(f, '노출 값 제거');
+    }
+    const result = runPushHook(f, local, base);
+    assert.notEqual(result.status, 0);
+    assert.match(
+      result.stderr,
+      kind === 'credential'
+        ? /recognized credential/
+        : kind === 'signature'
+          ? /prohibited signature/
+          : /Existing migration/
+    );
+    assert.ok(!result.stderr.includes(secret));
+  });
+}
+
+test('PR Quality remains wired to full checks and propagates failures', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'woori-quality-dispatch-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const fake = join(dir, 'pnpm'),
+    calls = join(dir, 'calls');
   writeFileSync(
     fake,
-    '#!/bin/sh\ntest "$(cat snapshot.txt)" = committed || exit 4\ngit rev-parse --show-toplevel >/dev/null || exit 5\nexit 0\n'
+    '#!/bin/sh\nprintf "%s\\n" "$*" >> "$WOORI_POLICY_CALLS"\n[ "$*" != "run $WOORI_FAIL_TASK" ] || exit 7\n'
   );
   chmodSync(fake, 0o755);
-  process.env.PATH = `${bin}:${originalPath}`;
+  const previous = {
+    PATH: process.env.PATH,
+    WOORI_POLICY_CALLS: process.env.WOORI_POLICY_CALLS,
+    WOORI_FAIL_TASK: process.env.WOORI_FAIL_TASK,
+  };
+  Object.assign(process.env, {
+    PATH: `${dir}:${process.env.PATH}`,
+    WOORI_POLICY_CALLS: calls,
+    WOORI_FAIL_TASK: '',
+  });
   try {
-    verifyCommit(f.dir, f.sha());
-    writeFileSync(fake, '#!/bin/sh\nexit 7\n');
-    assert.throws(() => verifyCommit(f.dir, f.sha()), /failed/);
+    for (const [name, expected] of [
+      [
+        'woori_client',
+        [
+          'policy:check',
+          'policy:test',
+          'lint',
+          'typecheck',
+          'test',
+          'check:boundaries',
+          'format:check',
+          'build',
+        ],
+      ],
+      [
+        'woori_server',
+        [
+          'policy:check',
+          'policy:test',
+          'format:check',
+          'prisma:validate',
+          'typecheck',
+          'test',
+          'test:integration',
+        ],
+      ],
+    ]) {
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name }));
+      writeFileSync(calls, '');
+      quality(dir);
+      assert.deepEqual(
+        readFileSync(calls, 'utf8').trim().split('\n'),
+        expected.map((task) => `run ${task}`)
+      );
+    }
+    process.env.WOORI_FAIL_TASK = 'test';
+    writeFileSync(calls, '');
+    assert.throws(() => quality(dir), /pnpm failed \(7\)/);
+    assert.ok(!readFileSync(calls, 'utf8').includes('run test:integration'));
   } finally {
-    process.env.PATH = originalPath;
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   }
-  assert.equal(readFileSync(join(f.dir, 'snapshot.txt'), 'utf8'), 'dirty');
+  const workflow = readFileSync(
+    join(source, '.github/workflows/quality.yml'),
+    'utf8'
+  );
+  assert.match(workflow, /\n  pull_request:/);
+  assert.match(workflow, /\n      - run: pnpm policy:quality\n/);
+  const pkg = JSON.parse(readFileSync(join(source, 'package.json'), 'utf8'));
+  if (pkg.name === 'woori_server') {
+    assert.match(pkg.scripts.test, /pnpm build/);
+    assert.match(pkg.scripts['test:integration'], /pnpm build/);
+    assert.match(workflow, /Prepare isolated CI database/);
+  } else assert.equal(pkg.scripts.build, 'pnpm -r build');
 });
+
 test('both tool adapters permit safe commands, deny prohibited commands and malformed input', () => {
   for (const adapter of [
     '.claude/hooks/pre-tool-use.mjs',

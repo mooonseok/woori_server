@@ -10,9 +10,9 @@
 - 도구 훅은 Bash/exec_command/shell_command의 명확한 git 우회·강제 push·보호 ref·Prisma reset·volume 삭제 패턴을 차단한다.
 - 임의 스크립트, 간접 API, 동적 셸 표현식 전체를 해석하지 않는다. 파서 오류는 차단하지만 프로세스 자체 장애/시간초과 시 도구 동작은 호스트에 따른다.
 - Git 훅은 파일 경로와 인식 가능한 비밀키 패턴만 검사한다. 모든 비밀값 탐지를 보장하지 않는다. 값은 로그에 출력하지 않는다.
-- pre-commit은 staged 전체, pre-push는 전송 커밋들의 비밀값/서명 및 끝 커밋의 전체 품질을 검사한다.
-- pre-push의 임시 checkout에 pnpm frozen install을 수행하므로 시간과 네트워크가 필요하다. 작업 폴더의 dev 서버와 .next를 공유하지 않는다.
-- 서버 pre-push는 .env의 격리 로컬 DB 연결 두 개만 임시 0600 파일로 전달하고 종료 시 삭제한다. 기존 DB의 데이터는 통합 테스트 대상으로 쓰지 않는다.
+- pre-commit은 staged 전체를 검사한다. pre-push는 보호 ref·비정상 이력 갱신·전송 커밋의 비밀값/서명·기존 migration 변경만 검사한다.
+- pre-push는 Git 객체를 직접 검사하며 임시 checkout·의존성 설치·타입 검사·테스트·빌드를 실행하지 않는다. 로컬 DB와 node_modules 없이도 실행할 수 있으나 Node 24와 Git은 필요하다.
+- 전체 포맷·타입·테스트·빌드는 PR Quality의 pnpm policy:quality에 유지한다. 서버 통합 검사는 CI 전용 DB에서 실행한다. 필요한 로컬 전체 검증은 하네스 프로필로 명시 실행하며, pre-push는 .env를 읽거나 DB에 접속하지 않는다.
 - pnpm policy:test는 임시 저장소에서 fixture 커밋과 git hook run을 수행한다. 원격 push/운영 DB 조작은 하지 않는다.
 - Quality는 pull_request와 workflow_call에서 실행한다. develop/main push 자동 배포는 꺼져 있고 Deploy는 workflow_dispatch 수동 대체 경로다. 서버 CI DB는 runner 전용이다.
 - GitHub 필수 검사 이름은 Quality. 먼저 PR에서 성공 실행을 확인한 뒤 기존 develop ruleset에 필수 검사로 등록한다.
