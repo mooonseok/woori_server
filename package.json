@@ -42,7 +42,9 @@
     "deploy:setup": "node scripts/local-deploy/main.mjs setup",
     "deploy:db": "node scripts/local-deploy/main.mjs db",
     "deploy:server": "node scripts/local-deploy/main.mjs server",
-    "test:deploy:local": "node --test scripts/local-deploy/*.test.mjs"
+    "test:deploy:local": "node --test scripts/local-deploy/*.test.mjs",
+    "harness:check": "node scripts/policy/harness.mjs check",
+    "harness:verify": "node scripts/policy/harness.mjs verify"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1151.0",

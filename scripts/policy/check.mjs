@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync, realpathSync, existsSync } from 'node:fs';
 import { resolve, join, relative } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { validateProfiles } from './harness.mjs';
 const cwd = process.cwd();
 const read = (path) => readFileSync(join(cwd, path), 'utf8');
 const assert = (value, message) => {
@@ -81,6 +82,24 @@ try {
       `Codex agent drift: ${name}`
     );
   }
+  const pkg = JSON.parse(read('package.json'));
+  validateProfiles(
+    JSON.parse(read('scripts/policy/verification-profiles.json')),
+    pkg,
+    cwd
+  );
+  assert(
+    pkg.scripts['harness:check'] === 'node scripts/policy/harness.mjs check',
+    'Harness check wiring drift'
+  );
+  assert(
+    pkg.scripts['harness:verify'] === 'node scripts/policy/harness.mjs verify',
+    'Harness verify wiring drift'
+  );
+  assert(
+    pkg.scripts['policy:test'] === 'node --test scripts/policy/*.test.mjs',
+    'Harness tests missing from policy gate'
+  );
   const provenance = JSON.parse(read('scripts/policy/sources.json'));
   assert(provenance.length > 0, 'Missing provenance');
   for (const file of ['pre-commit', 'commit-msg', 'pre-push'])
@@ -88,12 +107,19 @@ try {
       read(`.githooks/${file}`).includes('scripts/policy/run-node.sh'),
       `Broken Git hook: ${file}`
     );
-  // Validate TOML with the installed Python parser; never infer agent loading from Markdown alone.
+  // Static format and role parity only; native discovery and hook trust need runtime evidence.
   const toml = spawnSync(
     'python3',
     [
       '-c',
-      'import pathlib,tomllib; [tomllib.loads(p.read_text()) for p in pathlib.Path(".codex/agents").glob("*.toml")]',
+      `import pathlib,tomllib,json
+registry=json.loads(pathlib.Path('scripts/policy/agents.json').read_text())
+for name,spec in registry.items():
+    role=tomllib.loads((pathlib.Path('.codex/agents')/(name+'.toml')).read_text())
+    assert set(role) == {'name','description','developer_instructions'}, 'Unexpected role settings: '+name
+    assert role['name'] == name and role['description'] == spec['description'], 'Role metadata drift: '+name
+    assert role['developer_instructions'].strip() == spec['instructions'].strip(), 'Role instructions drift: '+name
+`,
     ],
     { cwd, encoding: 'utf8' }
   );
@@ -114,7 +140,7 @@ try {
     'Missing CI workflow'
   );
   console.log(
-    'Policy instructions, skills, agent parity, and hook registration passed.'
+    'Policy static checks passed: instructions, skill links, role parity, and hook configuration. Native role discovery and hook trust are separate runtime checks.'
   );
 } catch (error) {
   console.error(`[woori policy] ${error.message}`);
